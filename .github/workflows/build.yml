@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build:
-    name: Build & Upload Signed ARM64 APK
+    name: Build & Upload ARM64 APK
     runs-on: ubuntu-latest
 
     steps:
@@ -32,40 +32,110 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Decode Keystore from Secrets
+      - name: Validate Signing Secrets
+        id: sign_check
         run: |
+          set +e
+          VALID=true
+
+          if [ -z "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "❌ KEYSTORE_BASE64 فارغ"
+            VALID=false
+          fi
+          if [ -z "${{ secrets.KEYSTORE_PASSWORD }}" ]; then
+            echo "❌ KEYSTORE_PASSWORD فارغ"
+            VALID=false
+          fi
+          if [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
+            echo "❌ KEY_PASSWORD فارغ"
+            VALID=false
+          fi
+          if [ -z "${{ secrets.KEY_ALIAS }}" ]; then
+            echo "❌ KEY_ALIAS فارغ"
+            VALID=false
+          fi
+
+          echo "sign_valid=$VALID" >> $GITHUB_OUTPUT
+
+      - name: Decode & Test Keystore
+        if: steps.sign_check.outputs.sign_valid == 'true'
+        run: |
+          set +e
           mkdir -p android/keystore
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/keystore/release.jks
-          ls -lh android/keystore/release.jks
+
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/keystore/release.p12 2>/dev/null
+          FILE_SIZE=$(stat -c%s android/keystore/release.p12 2>/dev/null || echo 0)
+          echo "📦 Keystore size: $FILE_SIZE bytes"
+
+          if [ "$FILE_SIZE" -lt 1500 ]; then
+            echo "❌ Keystore صغير جدًا ($FILE_SIZE bytes)"
+            echo "sign_valid=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          keytool -list \
+            -keystore android/keystore/release.p12 \
+            -storetype PKCS12 \
+            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" 2>&1 | tee /tmp/ks_out.txt
+
+          if ! grep -q "PrivateKeyEntry" /tmp/ks_out.txt; then
+            echo "❌ لا يوجد PrivateKeyEntry — كلمة المرور أو الـ base64 خطأ"
+            echo "sign_valid=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if ! grep -qi "${{ secrets.KEY_ALIAS }}" /tmp/ks_out.txt; then
+            echo "❌ alias '${{ secrets.KEY_ALIAS }}' غير موجود"
+            echo "sign_valid=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "✅ Keystore صالح"
+          echo "sign_valid=true" >> $GITHUB_OUTPUT
 
       - name: Create key.properties
+        if: steps.sign_check.outputs.sign_valid == 'true'
         run: |
           cat > android/key.properties << EOP
           storePassword=${{ secrets.KEYSTORE_PASSWORD }}
           keyPassword=${{ secrets.KEY_PASSWORD }}
           keyAlias=${{ secrets.KEY_ALIAS }}
-          storeFile=../keystore/release.jks
+          storeFile=../keystore/release.p12
+          storeType=PKCS12
           EOP
+          echo "✅ key.properties أُنشئ"
 
       - name: Install Dependencies
         run: flutter pub get
 
-      - name: Build Signed ARM64 Release APK
+      - name: Build Signed ARM64 APK
+        if: steps.sign_check.outputs.sign_valid == 'true'
         run: flutter build apk --target-platform android-arm64 --release
 
-      - name: Prepare APK Artifact
+      - name: Build Fallback ARM64 APK
+        if: steps.sign_check.outputs.sign_valid != 'true'
+        run: |
+          echo "⚠️ البناء بدون keystore صالح"
+          flutter build apk --target-platform android-arm64 --release
+
+      - name: Prepare APK
         run: |
           mkdir -p release_output
           VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          if [ "${{ steps.sign_check.outputs.sign_valid }}" = "true" ]; then
+            SUFFIX="signed"
+          else
+            SUFFIX="unsigned"
+          fi
           cp build/app/outputs/flutter-apk/app-release.apk \
-             release_output/ARMusic-v${VERSION}-arm64.apk
+             release_output/ARMusic-v${VERSION}-arm64-${SUFFIX}.apk
           ls -lh release_output/
 
-      - name: Upload APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ARMusic-ARM64-APK
-          path: release_output/ARMusic-v*-arm64.apk
+          path: release_output/*.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -73,5 +143,5 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: release_output/ARMusic-v*-arm64.apk
+          files: release_output/*.apk
           generate_release_notes: true

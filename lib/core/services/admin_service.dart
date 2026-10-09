@@ -1,45 +1,69 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
-import 'package:http/http.dart' as http;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
-import '../../core/services/supabase_service.dart';
+import 'package:http/http.dart' as http;
+
+import '../config/supabase_config.dart';
+import 'supabase_service.dart';
 
 class AdminService {
-  static const String edgeFunctionUrl =
-      'https://sxaumorffdslpwtiyowa.supabase.co/functions/v1/admin-change-password';
+  AdminService._();
 
+  /// تغيير كلمة مرور أي مستخدم عبر Edge Function (يتطلب مستدعي أدمن).
+  /// ملاحظة: `adminId` مُبقى للتوافق فقط، القيمة الفعلية تأتي من JWT.
   static Future<bool> changeUserPassword({
     required String targetUserId,
     required String newPassword,
-    required String adminId,
+    String? adminId,
   }) async {
+    if (!SupabaseService.isInitialized) return false;
+
+    final session = SupabaseService.client.auth.currentSession;
+    final token = session?.accessToken;
+    if (token == null) {
+      debugPrint('changeUserPassword: no active session');
+      return false;
+    }
+    if (newPassword.length < 6) return false;
+
     try {
-      final res = await http.post(
-        Uri.parse(edgeFunctionUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'user_id': targetUserId,
-          'new_password': newPassword,
-          'admin_id': adminId,
-        }),
-      ).timeout(SupabaseService.defaultTimeout);
-      return res.statusCode == 200;
-    } catch (_) {
+      final res = await http
+          .post(
+            Uri.parse(SupabaseConfig.changePasswordFunctionUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'user_id': targetUserId,
+              'new_password': newPassword,
+            }),
+          )
+          .timeout(SupabaseConfig.timeout);
+
+      if (res.statusCode == 200) return true;
+      debugPrint('changeUserPassword failed: ${res.statusCode} ${res.body}');
+      return false;
+    } catch (e) {
+      debugPrint('changeUserPassword error: $e');
       return false;
     }
   }
 
   static Future<bool> updateUserRole(String userId, String newRole) async {
     if (!SupabaseService.isInitialized) return false;
+    if (!['user', 'admin', 'superuser'].contains(newRole)) return false;
     try {
       await SupabaseService.client
           .from('profiles')
           .update({'role': newRole})
           .eq('id', userId)
-          .timeout(SupabaseService.defaultTimeout);
+          .timeout(SupabaseConfig.timeout);
       return true;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('updateUserRole error: $e');
       return false;
     }
   }
@@ -56,20 +80,26 @@ class AdminService {
           minWidth: 1280,
           minHeight: 720,
           quality: 80,
+          format: CompressFormat.jpeg, // ← lowercase
         );
         imageBytes = compressed ?? await imageFile.readAsBytes();
       } else {
         imageBytes = await imageFile.readAsBytes();
       }
 
-      final fileName = 'banner_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final fileName =
+          'banner_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
       await SupabaseService.client.storage
           .from('banners')
-          .uploadBinary(fileName, imageBytes)
-          .timeout(SupabaseService.defaultTimeout);
+          .uploadBinary(fileName, imageBytes) // ← بدون FileOptions
+          .timeout(SupabaseConfig.timeout);
 
-      return SupabaseService.client.storage.from('banners').getPublicUrl(fileName);
-    } catch (_) {
+      return SupabaseService.client.storage
+          .from('banners')
+          .getPublicUrl(fileName);
+    } catch (e) {
+      debugPrint('uploadBannerImage error: $e');
       return null;
     }
   }
@@ -88,9 +118,10 @@ class AdminService {
         'target_url': targetUrl,
         'display_order': displayOrder,
         'is_active': true,
-      }).timeout(SupabaseService.defaultTimeout);
+      }).timeout(SupabaseConfig.timeout);
       return true;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('insertBanner error: $e');
       return false;
     }
   }
@@ -102,9 +133,10 @@ class AdminService {
           .from('banners')
           .delete()
           .eq('id', bannerId)
-          .timeout(SupabaseService.defaultTimeout);
+          .timeout(SupabaseConfig.timeout);
       return true;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('deleteBanner error: $e');
       return false;
     }
   }
@@ -116,9 +148,10 @@ class AdminService {
           .from('app_versions')
           .update({'force_update': isForce})
           .eq('id', versionId)
-          .timeout(SupabaseService.defaultTimeout);
+          .timeout(SupabaseConfig.timeout);
       return true;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('toggleForceUpdate error: $e');
       return false;
     }
   }

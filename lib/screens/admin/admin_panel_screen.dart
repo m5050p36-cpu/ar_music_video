@@ -63,14 +63,12 @@ class _UsersTabState extends State<_UsersTab> {
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
           ElevatedButton(
             onPressed: () async {
-              final auth = Provider.of<AuthProvider>(context, listen: false);
               final messenger = ScaffoldMessenger.of(context);
               final navigator = Navigator.of(ctx);
 
               final success = await AdminService.changeUserPassword(
                 targetUserId: targetUserId,
                 newPassword: pwdController.text.trim(),
-                adminId: auth.currentUser?.id ?? '',
               );
 
               navigator.pop();

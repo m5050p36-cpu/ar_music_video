@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../providers/auth_provider.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
@@ -12,30 +13,50 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  bool _navigated = false;
+
   @override
   void initState() {
     super.initState();
-    _navigateNext();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _listenAndNavigate());
   }
 
-  Future<void> _navigateNext() async {
-    await Future.delayed(const Duration(milliseconds: 1200));
-    if (!mounted) return;
+  void _listenAndNavigate() {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    // نستمع حتى تخرج الحالة من unknown
+    auth.addListener(_checkAndNavigate);
+    _checkAndNavigate();
+  }
 
+  void _checkAndNavigate() {
+    if (_navigated || !mounted) return;
     final auth = Provider.of<AuthProvider>(context, listen: false);
 
-    // إذا كان المستخدم مسجلاً أو زائر، يفتح HomeScreen فوراً
-    if (auth.status == AuthStatus.authenticated || auth.status == AuthStatus.guest) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+    if (auth.status == AuthStatus.unknown) return; // انتظر
+
+    _navigated = true;
+    auth.removeListener(_checkAndNavigate);
+
+    final destination = (auth.status == AuthStatus.authenticated ||
+            auth.status == AuthStatus.guest)
+        ? const HomeScreen()
+        : const LoginScreen();
+
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => destination),
       );
-    } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
-    }
+    });
+  }
+
+  @override
+  void dispose() {
+    try {
+      Provider.of<AuthProvider>(context, listen: false)
+          .removeListener(_checkAndNavigate);
+    } catch (_) {}
+    super.dispose();
   }
 
   @override
@@ -49,7 +70,7 @@ class _SplashScreenState extends State<SplashScreen> {
             Container(
               padding: const EdgeInsets.all(28),
               decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withAlpha(40),
+                color: theme.colorScheme.primary.withValues(alpha: 0.18),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -70,7 +91,7 @@ class _SplashScreenState extends State<SplashScreen> {
             Text(
               'مشغل الوسائط الاحترافي المتكامل',
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withAlpha(160),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
               ),
             ),
             const SizedBox(height: 36),

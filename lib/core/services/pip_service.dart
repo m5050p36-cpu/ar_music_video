@@ -1,7 +1,7 @@
 import 'package:flutter/services.dart';
 
 class PipService {
-  static const MethodChannel _channel = MethodChannel('com.yourapp.armusic/pip');
+  static const MethodChannel _channel = MethodChannel('com.m5050p36.armusic/pip');
 
   static Future<bool> enterPiP({int width = 16, int height = 9}) async {
     try {

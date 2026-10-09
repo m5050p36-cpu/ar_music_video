@@ -1,9 +1,28 @@
+# Flutter/Dart
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
 .packages
 build/
-android/.gradle/
-android/local.properties
 *.iml
 .idea/
+
+# Android
+android/.gradle/
+android/local.properties
+android/key.properties
+android/keystore/
+android/app/*.jks
+android/app/*.keystore
+
+# Supabase
+supabase/.temp/
+supabase/.branches/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+*.env
+.env.local

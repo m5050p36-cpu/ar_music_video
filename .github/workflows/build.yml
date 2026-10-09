@@ -1,0 +1,54 @@
+name: Build Signed Android APK (ARM64)
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Release Single ARM64 APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. سحب كود المشروع
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. إعداد Java 17 (Zulu) المتوافقة مع Gradle 8.14
+      - name: Set up Java 17 (Zulu)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # 3. إعداد Flutter SDK (3.27+ stable) مع تفعيل الكاش لتسريع البناء
+      - name: Set up Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      # 4. جلب الحزم والمكتبات
+      - name: Install Dependencies
+        run: flutter pub get
+
+      # 5. بناء ملف APK مخصص لمعمارية ARM64
+      - name: Build ARM64 Release APK
+        run: |
+          flutter build apk --target-platform android-arm64 --release
+
+      # 6. إعادة تسمية ملف الـ APK بالاسم الرسمي للتطبيق والإصدار
+      - name: Prepare Single APK File
+        run: |
+          mkdir -p release_output
+          cp build/app/outputs/flutter-apk/app-release.apk release_output/ARMusic-v1.0.0.apk
+          ls -lh release_output/ARMusic-v1.0.0.apk
+
+      # 7. رفع ملف الـ APK وحيداً كـ Artifact جاهز للتحميل والتثبيت المباشر
+      - name: Upload Single APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARMusic-v1.0.0-ARM64
+          path: release_output/ARMusic-v1.0.0.apk
+          if-no-files-found: error

@@ -1,0 +1,45 @@
+name: ar_music_video
+description: "Professional Audio & Video Player with Supabase Auth and Admin Panel."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  supabase_flutter: ^2.16.0
+  provider: ^6.1.2
+  just_audio: ^0.9.46
+  just_audio_background: ^0.0.1-beta.15
+  audio_video_progress_bar: ^2.0.3
+  video_player: ^2.9.2
+  url_launcher: ^6.3.1
+  file_picker: ^10.3.3
+  path_provider: ^2.1.5
+  permission_handler: ^11.3.1
+  shared_preferences: ^2.3.3
+  carousel_slider: ^5.0.0
+  google_fonts: ^6.2.1
+  rxdart: ^0.28.0
+  image_picker: ^1.1.2
+  flutter_image_compress: ^2.3.0
+  http: ^1.2.2
+  cached_network_image: ^3.4.1
+  flutter_just_marquee: ^1.0.1
+  screen_brightness: ^2.1.6
+  video_thumbnail: ^0.5.6
+  audio_metadata_reader: ^1.4.2
+  home_widget: ^0.7.0
+
+dependency_overrides:
+  app_links: ^6.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

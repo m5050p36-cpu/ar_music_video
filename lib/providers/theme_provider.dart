@@ -1,30 +1,51 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../core/theme/app_themes.dart';
 
 class ThemeProvider extends ChangeNotifier {
-  AppThemeMode _currentTheme = AppThemeMode.dark;
+  static const _prefsKey = 'app_theme_mode';
 
-  AppThemeMode get currentTheme => _currentTheme;
-  ThemeData get themeData => AppThemes.getTheme(_currentTheme);
+  AppThemeMode _mode = AppThemeMode.dark;
+  bool _loaded = false;
 
-  ThemeProvider() {
-    _loadTheme();
-  }
+  AppThemeMode get mode => _mode;
+  bool get isLoaded => _loaded;
+  ThemeData get currentTheme => AppThemes.get(_mode);
 
-  Future<void> _loadTheme() async {
-    final prefs = await SharedPreferences.getInstance();
-    final themeIndex = prefs.getInt('app_theme_mode') ?? 0;
-    if (themeIndex < AppThemeMode.values.length) {
-      _currentTheme = AppThemeMode.values[themeIndex];
+  Future<void> load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _mode = AppThemeMode.fromName(prefs.getString(_prefsKey));
+    } catch (e) {
+      debugPrint('ThemeProvider.load error: $e');
+    } finally {
+      _loaded = true;
       notifyListeners();
     }
   }
 
-  Future<void> setTheme(AppThemeMode mode) async {
-    _currentTheme = mode;
+  Future<void> setMode(AppThemeMode mode) async {
+    if (_mode == mode) return;
+    _mode = mode;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('app_theme_mode', mode.index);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_prefsKey, mode.name);
+    } catch (e) {
+      debugPrint('ThemeProvider.setMode error: $e');
+    }
+  }
+
+  // ─── Aliases للتوافق مع الكود القديم ─────────────────
+  Future<void> setTheme(AppThemeMode mode) => setMode(mode);
+  Future<void> setThemeByName(String name) =>
+      setMode(AppThemeMode.fromName(name));
+
+  /// يبدّل للثيم التالي في الدورة
+  Future<void> cycleTheme() {
+    final idx = AppThemeMode.values.indexOf(_mode);
+    final next = AppThemeMode.values[(idx + 1) % AppThemeMode.values.length];
+    return setMode(next);
   }
 }

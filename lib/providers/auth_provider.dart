@@ -25,7 +25,7 @@ class AuthProvider extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final isGuestSaved = prefs.getBool('is_guest_mode') ?? true;
 
-      if (!SupabaseService.isInitialized || SupabaseService.client == null) {
+      if (!SupabaseService.isInitialized) {
         _status = AuthStatus.guest;
         notifyListeners();
         return;
@@ -37,7 +37,7 @@ class AuthProvider extends ChangeNotifier {
         return;
       }
 
-      final user = SupabaseService.client?.auth.currentUser;
+      final user = SupabaseService.client.auth.currentUser;
       if (user != null) {
         _currentUser = user;
         _profile = await SupabaseService.getCurrentUserProfile();
@@ -52,11 +52,11 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<bool> signIn(String email, String password) async {
-    if (!SupabaseService.isInitialized || SupabaseService.client == null) {
+    if (!SupabaseService.isInitialized) {
       return false;
     }
     try {
-      final res = await SupabaseService.client!.auth.signInWithPassword(
+      final res = await SupabaseService.client.auth.signInWithPassword(
         email: email,
         password: password,
       ).timeout(SupabaseService.defaultTimeout);
@@ -77,11 +77,11 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<bool> signUp(String email, String password, String fullName) async {
-    if (!SupabaseService.isInitialized || SupabaseService.client == null) {
+    if (!SupabaseService.isInitialized) {
       return false;
     }
     try {
-      final res = await SupabaseService.client!.auth.signUp(
+      final res = await SupabaseService.client.auth.signUp(
         email: email,
         password: password,
         data: {'full_name': fullName},
@@ -91,6 +91,7 @@ class AuthProvider extends ChangeNotifier {
         _currentUser = res.user;
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('is_guest_mode', false);
+        _profile = await SupabaseService.getCurrentUserProfile();
         _status = AuthStatus.authenticated;
         notifyListeners();
         return true;
@@ -113,9 +114,9 @@ class AuthProvider extends ChangeNotifier {
   Future<void> signOut() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('is_guest_mode');
-    if (SupabaseService.isInitialized && SupabaseService.client != null) {
+    if (SupabaseService.isInitialized) {
       try {
-        await SupabaseService.client!.auth.signOut().timeout(const Duration(seconds: 5));
+        await SupabaseService.client.auth.signOut().timeout(const Duration(seconds: 5));
       } catch (_) {}
     }
     _currentUser = null;

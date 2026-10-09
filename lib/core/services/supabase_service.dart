@@ -4,30 +4,17 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SupabaseService {
-  static const String supabaseUrl = 'https://YOUR_SUPABASE_PROJECT_REF.supabase.co';
-  static const String supabaseAnonKey = 'YOUR_SUPABASE_ANON_KEY';
+  // المفاتيح الحقيقية لمشروعك في Supabase
+  static const String supabaseUrl = 'https://sxaumorffdslpwtiyowa.supabase.co';
+  static const String supabaseAnonKey = 'sb_publishable_qg85Q8zCYMY8BwWMsCwF_g_pi986J4p';
   static const Duration defaultTimeout = Duration(seconds: 15);
 
   static bool _isInitialized = false;
   static bool get isInitialized => _isInitialized;
 
-  static SupabaseClient? get client {
-    if (!_isInitialized) return null;
-    try {
-      return Supabase.instance.client;
-    } catch (_) {
-      return null;
-    }
-  }
+  static SupabaseClient get client => Supabase.instance.client;
 
   static Future<void> initialize() async {
-    // إذا كانت المفاتيح افتراضية، نتجاهل التهيئة ليعمل التطبيق Offline دون انهيار
-    if (supabaseUrl.contains('YOUR_SUPABASE') || supabaseAnonKey.contains('YOUR_SUPABASE')) {
-      debugPrint('Running in pure local offline mode');
-      _isInitialized = false;
-      return;
-    }
-
     try {
       // ignore: deprecated_member_use
       await Supabase.initialize(
@@ -39,15 +26,16 @@ class SupabaseService {
         ),
       );
       _isInitialized = true;
+      debugPrint('Supabase successfully connected to: $supabaseUrl');
     } catch (e) {
-      debugPrint('Supabase safe warning: $e');
+      debugPrint('Supabase connection error (running in offline mode): $e');
       _isInitialized = false;
     }
   }
 
   static Future<Map<String, dynamic>?> getCurrentUserProfile() async {
-    if (!_isInitialized || client == null) return null;
-    final user = client?.auth.currentUser;
+    if (!_isInitialized) return null;
+    final user = client.auth.currentUser;
     if (user == null) return null;
 
     final prefs = await SharedPreferences.getInstance();
@@ -55,7 +43,7 @@ class SupabaseService {
     final cachedName = prefs.getString('user_name_${user.id}');
 
     try {
-      final res = await client!
+      final res = await client
           .from('profiles')
           .select()
           .eq('id', user.id)

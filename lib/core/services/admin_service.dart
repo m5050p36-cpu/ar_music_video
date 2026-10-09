@@ -7,9 +7,8 @@ import '../../core/services/supabase_service.dart';
 
 class AdminService {
   static const String edgeFunctionUrl =
-      'https://YOUR_SUPABASE_PROJECT_REF.supabase.co/functions/v1/admin-change-password';
+      'https://sxaumorffdslpwtiyowa.supabase.co/functions/v1/admin-change-password';
 
-  // 1. تغيير كلمة المرور فورياً عبر Edge Function
   static Future<bool> changeUserPassword({
     required String targetUserId,
     required String newPassword,
@@ -31,8 +30,8 @@ class AdminService {
     }
   }
 
-  // 2. تحديث صلاحية المستخدم (user / admin / superuser)
   static Future<bool> updateUserRole(String userId, String newRole) async {
+    if (!SupabaseService.isInitialized) return false;
     try {
       await SupabaseService.client
           .from('profiles')
@@ -45,13 +44,12 @@ class AdminService {
     }
   }
 
-  // 3. ضغط ورفع صورة البنر لسلة التخزين banners
   static Future<String?> uploadBannerImage(File imageFile) async {
+    if (!SupabaseService.isInitialized) return null;
     try {
       final fileSize = await imageFile.length();
       Uint8List imageBytes;
 
-      // ضغط الصورة تلقائياً إذا كانت أكبر من 500KB
       if (fileSize > 500 * 1024) {
         final compressed = await FlutterImageCompress.compressWithFile(
           imageFile.absolute.path,
@@ -76,13 +74,13 @@ class AdminService {
     }
   }
 
-  // 4. حفظ البنر في الجدول
   static Future<bool> insertBanner({
     required String title,
     required String imageUrl,
     required String targetUrl,
     required int displayOrder,
   }) async {
+    if (!SupabaseService.isInitialized) return false;
     try {
       await SupabaseService.client.from('banners').insert({
         'title': title,
@@ -97,8 +95,8 @@ class AdminService {
     }
   }
 
-  // 5. حذف بنر
   static Future<bool> deleteBanner(String bannerId) async {
+    if (!SupabaseService.isInitialized) return false;
     try {
       await SupabaseService.client
           .from('banners')
@@ -111,8 +109,8 @@ class AdminService {
     }
   }
 
-  // 6. تحديث التحديث الإجباري للإصدار
   static Future<bool> toggleForceUpdate(String versionId, bool isForce) async {
+    if (!SupabaseService.isInitialized) return false;
     try {
       await SupabaseService.client
           .from('app_versions')

@@ -26,7 +26,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final userId = auth.currentUser?.id;
 
-    if (userId != null) {
+    if (userId != null && SupabaseService.isInitialized) {
       try {
         await SupabaseService.client
             .from('profiles')

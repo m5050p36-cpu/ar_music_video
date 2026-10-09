@@ -38,6 +38,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _loadBanners() async {
+    if (!SupabaseService.isInitialized) {
+      _setOfflineBanners();
+      return;
+    }
+
     try {
       final res = await SupabaseService.client
           .from('banners')
@@ -50,22 +55,26 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         setState(() {
           _banners = List<Map<String, dynamic>>.from(res);
         });
+        return;
       }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _banners = [
-            {
-              'title': 'مرحباً بك في AR Music & Video',
-              'image_url': 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=1200&q=80',
-            },
-            {
-              'title': 'أقوى مشغل صوتي وفيديو مع PiP',
-              'image_url': 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=1200&q=80',
-            },
-          ];
-        });
-      }
+    } catch (_) {}
+    _setOfflineBanners();
+  }
+
+  void _setOfflineBanners() {
+    if (mounted) {
+      setState(() {
+        _banners = [
+          {
+            'title': 'مرحباً بك في AR Music & Video',
+            'image_url': 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=1200&q=80',
+          },
+          {
+            'title': 'أقوى مشغل صوتي وفيديو مع PiP',
+            'image_url': 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=1200&q=80',
+          },
+        ];
+      });
     }
   }
 

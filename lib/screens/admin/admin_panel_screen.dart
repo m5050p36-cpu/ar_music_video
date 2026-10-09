@@ -38,7 +38,6 @@ class AdminPanelScreen extends StatelessWidget {
   }
 }
 
-// 1. تبويب إدارة المستخدمين
 class _UsersTab extends StatefulWidget {
   const _UsersTab();
 
@@ -76,7 +75,7 @@ class _UsersTabState extends State<_UsersTab> {
 
               navigator.pop();
               messenger.showSnackBar(
-                SnackBar(content: Text(success ? 'تم تحديث كلمة المرور فورياً عبر Edge Function' : 'فشل التحديث')),
+                SnackBar(content: Text(success ? 'تم تحديث كلمة المرور فورياً' : 'فشل التحديث')),
               );
             },
             child: const Text('تغيير الآن'),
@@ -143,7 +142,9 @@ class _UsersTabState extends State<_UsersTab> {
         ),
         Expanded(
           child: FutureBuilder(
-            future: SupabaseService.client.from('profiles').select(),
+            future: SupabaseService.isInitialized
+                ? SupabaseService.client.from('profiles').select()
+                : Future.value([]),
             builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
               if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
               final list = snapshot.data!;
@@ -187,7 +188,6 @@ class _UsersTabState extends State<_UsersTab> {
   }
 }
 
-// 2. تبويب إدارة البنرات الإعلانية
 class _BannersTab extends StatefulWidget {
   const _BannersTab();
 
@@ -234,9 +234,9 @@ class _BannersTabState extends State<_BannersTab> {
                 );
                 navigator.pop();
                 if (mounted) setState(() {});
-                messenger.showSnackBar(const SnackBar(content: Text('تم رفع وضغط وحفظ البنر بنجاح')));
+                messenger.showSnackBar(const SnackBar(content: Text('تم حفظ البنر بنجاح')));
               } else {
-                messenger.showSnackBar(const SnackBar(content: Text('فشل رفع الصورة')));
+                messenger.showSnackBar(const SnackBar(content: Text('فشل رفع الصورة أو غير متصل')));
               }
             },
             child: const Text('رفع وحفظ'),
@@ -255,7 +255,9 @@ class _BannersTabState extends State<_BannersTab> {
         label: const Text('إضافة بنر'),
       ),
       body: FutureBuilder(
-        future: SupabaseService.client.from('banners').select().order('display_order'),
+        future: SupabaseService.isInitialized
+            ? SupabaseService.client.from('banners').select().order('display_order')
+            : Future.value([]),
         builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
           final banners = snapshot.data!;
@@ -305,7 +307,6 @@ class _BannersTabState extends State<_BannersTab> {
   }
 }
 
-// 3. تبويب إدارة الإصدارات والتحديث الإجباري
 class _VersionsTab extends StatefulWidget {
   const _VersionsTab();
 
@@ -317,7 +318,9 @@ class _VersionsTabState extends State<_VersionsTab> {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder(
-      future: SupabaseService.client.from('app_versions').select(),
+      future: SupabaseService.isInitialized
+          ? SupabaseService.client.from('app_versions').select()
+          : Future.value([]),
       builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         final versions = snapshot.data!;

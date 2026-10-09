@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -11,42 +12,52 @@ import 'providers/player_provider.dart';
 import 'screens/common/splash_screen.dart';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        ChangeNotifierProvider(create: (_) => LanguageProvider()),
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => PlayerProvider()),
-      ],
-      child: const ARMusicApp(),
-    ),
-  );
+    // تهيئة آمنة جداً لخدمة الصوت في الخلفية
+    try {
+      await JustAudioBackground.init(
+        androidNotificationChannelId: 'com.yourapp.armusic.channel.audio',
+        androidNotificationChannelName: 'AR Music Playback',
+        androidNotificationOngoing: true,
+        androidStopForegroundOnPause: true,
+        androidNotificationIcon: 'mipmap/ic_launcher',
+      );
+    } catch (e) {
+      debugPrint('JustAudioBackground safe init: $e');
+    }
 
-  _initServicesInBackground();
-}
+    // تهيئة آمنة لـ Supabase
+    try {
+      await SupabaseService.initialize();
+    } catch (e) {
+      debugPrint('Supabase safe init: $e');
+    }
 
-Future<void> _initServicesInBackground() async {
-  try {
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+    // قفل الاتجاهات
+    try {
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    } catch (_) {}
 
-    await JustAudioBackground.init(
-      androidNotificationChannelId: 'com.yourapp.armusic.channel.audio',
-      androidNotificationChannelName: 'AR Music Playback',
-      androidNotificationOngoing: true,
-      androidStopForegroundOnPause: true,
+    runApp(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => ThemeProvider()),
+          ChangeNotifierProvider(create: (_) => LanguageProvider()),
+          ChangeNotifierProvider(create: (_) => AuthProvider()),
+          ChangeNotifierProvider(create: (_) => PlayerProvider()),
+        ],
+        child: const ARMusicApp(),
+      ),
     );
-
-    await SupabaseService.initialize();
-  } catch (e) {
-    debugPrint('Background init warning: $e');
-  }
+  }, (error, stack) {
+    debugPrint('Global Caught Error: $error');
+  });
 }
 
 class ARMusicApp extends StatelessWidget {

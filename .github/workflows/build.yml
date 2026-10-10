@@ -86,26 +86,45 @@ jobs:
         run: |
           set -e
           PUB_CACHE_DIR="${PUB_CACHE:-$HOME/.pub-cache}"
+          echo "PUB_CACHE_DIR=$PUB_CACHE_DIR"
 
-          echo "════ حذف package من AndroidManifest.xml ════"
+          # ─── 1. patch مباشر للمسار المعروف ───
+          PATCHED=0
+          for pkg_dir in on_audio_query_android-*; do
+            MANIFEST="$PUB_CACHE_DIR/hosted/pub.dev/${pkg_dir}/android/src/main/AndroidManifest.xml"
+            if [ -f "$MANIFEST" ]; then
+              echo "📄 Found: $MANIFEST"
+              sed -i 's/ package="[^"]*"//g' "$MANIFEST"
+              head -3 "$MANIFEST"
+              PATCHED=1
+            fi
+          done
+
+          # ─── 2. patch عام — بدون maxdepth ───
           find "$PUB_CACHE_DIR/hosted/pub.dev" \
-            -maxdepth 4 \
             -type f \
             -path "*/android/src/main/AndroidManifest.xml" \
             2>/dev/null | while read -r manifest; do
             if grep -q 'package=' "$manifest" 2>/dev/null; then
-              sed -i 's/ package="[^"]*"//' "$manifest"
+              sed -i 's/ package="[^"]*"//g' "$manifest"
               echo "  ✅ patched: $manifest"
             fi
           done
 
-          echo ""
-          echo "════ تحقق ════"
-          find "$PUB_CACHE_DIR/hosted/pub.dev" \
-            -maxdepth 4 \
+          # ─── 3. تحقق نهائي ───
+          echo "════ تحقق نهائي ════"
+          FOUND=$(find "$PUB_CACHE_DIR/hosted/pub.dev" \
             -type f \
-            -path "*/on_audio_query_android*/android/src/main/AndroidManifest.xml" \
-            -exec head -3 {} \; 2>/dev/null || echo "(on_audio_query_android غير موجود)"
+            -path "*on_audio_query_android*AndroidManifest.xml" \
+            2>/dev/null | head -1)
+          if [ -n "$FOUND" ]; then
+            if grep -q 'package=' "$FOUND"; then
+              echo "❌ لم يُحذف package من $FOUND"
+              exit 1
+            else
+              echo "✅ on_audio_query_android AndroidManifest.xml نظيف"
+            fi
+          fi
 
       - name: Build Signed ARM64 APK
         if: steps.sign_check.outputs.sign_valid == 'true'

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/services/permission_service.dart';
 import '../../providers/auth_provider.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
@@ -14,16 +16,29 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   bool _navigated = false;
+  bool _permissionsRequested = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _listenAndNavigate());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startup());
   }
 
-  void _listenAndNavigate() {
+  Future<void> _startup() async {
+    // 1. اطلب الصلاحيات مرة واحدة فقط (أول تشغيل)
+    if (!_permissionsRequested && mounted) {
+      _permissionsRequested = true;
+      final prefs = await SharedPreferences.getInstance();
+      final alreadyAsked = prefs.getBool('permissions_asked_v1') ?? false;
+      if (!alreadyAsked && mounted) {
+        await PermissionService.requestAll(context);
+        await prefs.setBool('permissions_asked_v1', true);
+      }
+    }
+
+    // 2. انتظر AuthProvider يخرج من unknown
+    if (!mounted) return;
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    // نستمع حتى تخرج الحالة من unknown
     auth.addListener(_checkAndNavigate);
     _checkAndNavigate();
   }
@@ -32,7 +47,7 @@ class _SplashScreenState extends State<SplashScreen> {
     if (_navigated || !mounted) return;
     final auth = Provider.of<AuthProvider>(context, listen: false);
 
-    if (auth.status == AuthStatus.unknown) return; // انتظر
+    if (auth.status == AuthStatus.unknown) return;
 
     _navigated = true;
     auth.removeListener(_checkAndNavigate);

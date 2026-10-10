@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:on_audio_query/on_audio_query.dart';
 import 'package:photo_manager/photo_manager.dart';
 
@@ -30,14 +28,16 @@ class MediaScanner {
 
       final tracks = <AudioTrack>[];
       for (final s in songs) {
-        if (s.isMusic != true && s.isAlarm == true) continue;
-        if (s.isRingtone == true || s.isNotification == true) continue;
+        if (s.isAlarm == true) continue;
+        if (s.isRingtone == true) continue;
+        if (s.isNotification == true) continue;
         if (s.size == 0) continue;
+        if (s.data.isEmpty) continue;
 
         tracks.add(
           AudioTrack(
             id: s.id.toString(),
-            title: s.title,
+            title: (s.title.isNotEmpty) ? s.title : _fileName(s.data),
             artist: s.artist ?? 'فنان غير معروف',
             album: s.album ?? 'ألبوم عام',
             path: s.data,
@@ -100,13 +100,24 @@ class MediaScanner {
       for (final a in assets) {
         final file = await a.file;
         if (file == null) continue;
+
+        final rawTitle = a.title;
+        final title = (rawTitle != null && rawTitle.isNotEmpty)
+            ? rawTitle
+            : _fileName(file.path);
+
+        final rawPath = a.relativePath;
+        final folder = (rawPath != null && rawPath.isNotEmpty)
+            ? rawPath.split('/').first
+            : 'فيديوهات';
+
         items.add(
           VideoItem(
             id: a.id,
-            title: a.title.isNotEmpty ? a.title : _fileName(file.path),
+            title: title,
             path: file.path,
-            folderName: a.relativePath.split('/').first,
-            duration: Duration(milliseconds: a.duration * 1000),
+            folderName: folder,
+            duration: Duration(seconds: a.duration),
             thumbnailPath: null,
           ),
         );

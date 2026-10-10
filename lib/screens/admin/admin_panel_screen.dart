@@ -1,10 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-import '../../providers/auth_provider.dart';
 import '../../core/services/admin_service.dart';
 import '../../core/services/supabase_service.dart';
 

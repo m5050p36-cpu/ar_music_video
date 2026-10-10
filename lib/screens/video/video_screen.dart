@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 
+import '../../core/localization/app_strings.dart';
 import '../../core/services/media_scanner.dart';
 import '../../models/video_item.dart';
 import 'video_player_screen.dart';
@@ -64,21 +65,31 @@ class _VideoScreenState extends State<VideoScreen>
   Widget build(BuildContext context) {
     super.build(context);
 
+    // استخراج النصوص
+    final tLibrary = context.tr('video_library');
+    final tAll = context.tr('video_all');
+    final tAlbums = context.tr('video_albums');
+    final tScanning = context.tr('video_scanning');
+    final tEmpty = context.tr('video_empty');
+    final tRefresh = context.tr('audio_refresh');
+    final tGridView = context.tr('video_grid_view');
+    final tListView = context.tr('video_list_view');
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('مكتبة الفيديوهات'),
+        title: Text(tLibrary),
         actions: [
           IconButton(
             icon: Icon(
               _isGridView ? Icons.view_list_rounded : Icons.grid_view_rounded,
             ),
-            tooltip: _isGridView ? 'عرض كقائمة' : 'عرض كشبكة',
+            tooltip: _isGridView ? tListView : tGridView,
             onPressed: () => setState(() => _isGridView = !_isGridView),
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            tooltip: 'إعادة الفحص',
+            tooltip: tRefresh,
             onPressed: () {
               _hasScanned = false;
               _autoScan();
@@ -87,44 +98,39 @@ class _VideoScreenState extends State<VideoScreen>
         ],
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(text: 'جميع الفيديوهات'),
-            Tab(text: 'الألبومات'),
+          tabs: [
+            Tab(text: tAll),
+            Tab(text: tAlbums),
           ],
         ),
       ),
       body: _isScanning
-          ? const Center(
+          ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 12),
-                  Text('جاري فحص فيديوهات الجهاز...'),
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 12),
+                  Text(tScanning),
                 ],
               ),
             )
           : TabBarView(
               controller: _tabController,
               children: [
-                _buildAllVideosTab(),
-                _buildAlbumsTab(),
+                _buildAllVideosTab(tEmpty),
+                _buildAlbumsTab(tAlbums),
               ],
             ),
     );
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // صورة مصغرة عبر MediaStore — سريعة، lazy، بدون قراءة الملف
-  // ═══════════════════════════════════════════════════════════════
   Widget _buildThumbnail(VideoItem v) {
     if (v.asset != null) {
       return AssetEntityImage(
         v.asset!,
         isOriginal: false,
-        // ✅ الباني الأساسي — متاح في كل الإصدارات
         thumbnailSize: const ThumbnailSize(400, 400),
-        // ❌ حذف thumbnailFormat — القيمة الافتراضية jpeg
         fit: BoxFit.cover,
         filterQuality: FilterQuality.medium,
         errorBuilder: (_, __, ___) => _thumbnailFallback(),
@@ -146,15 +152,12 @@ class _VideoScreenState extends State<VideoScreen>
     );
   }
 
-  Widget _buildAllVideosTab() {
+  Widget _buildAllVideosTab(String emptyText) {
     if (_videos.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'لا توجد فيديوهات في الجهاز.',
-            textAlign: TextAlign.center,
-          ),
+          padding: const EdgeInsets.all(24),
+          child: Text(emptyText, textAlign: TextAlign.center),
         ),
       );
     }
@@ -264,16 +267,18 @@ class _VideoScreenState extends State<VideoScreen>
     );
   }
 
-  Widget _buildAlbumsTab() {
+  Widget _buildAlbumsTab(String emptyText) {
     final Map<String, List<VideoItem>> albums = {};
     for (final v in _videos) {
       albums.putIfAbsent(v.folderName, () => []).add(v);
     }
     if (albums.isEmpty) {
-      return const Center(child: Text('لا توجد ألبومات'));
+      return Center(child: Text(emptyText));
     }
     final entries = albums.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
+
+    final tVideos = context.tr('video_videos');
 
     return ListView.builder(
       itemCount: entries.length,
@@ -283,7 +288,7 @@ class _VideoScreenState extends State<VideoScreen>
         return ListTile(
           leading: const Icon(Icons.folder),
           title: Text(e.key),
-          subtitle: Text('${e.value.length} فيديو'),
+          subtitle: Text('${e.value.length} $tVideos'),
           trailing: const Icon(Icons.chevron_left),
           onTap: () => Navigator.push(
             context,

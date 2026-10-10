@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:screen_brightness/screen_brightness.dart';
+import '../../core/localization/app_strings.dart';
 import '../../core/services/pip_service.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
@@ -164,7 +165,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             actions: [
               IconButton(
                 icon: const Icon(Icons.picture_in_picture_alt_rounded, color: Colors.white),
-                tooltip: 'تشغيل في نافذة عائمة (PiP)',
+                tooltip: context.tr('player_pip'),
                 onPressed: () {
                   final ar = _controller.value.aspectRatio;
                   PipService.enterPiP(
@@ -175,7 +176,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
               PopupMenuButton<double>(
                 initialValue: _speed,
-                tooltip: 'سرعة التشغيل',
+                tooltip: context.tr('player_speed'),
                 icon: const Icon(Icons.speed, color: Colors.white),
                 onSelected: (s) {
                   setState(() => _speed = s);
@@ -188,7 +189,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
               IconButton(
                 icon: Icon(_isLooping ? Icons.repeat_one : Icons.repeat, color: _isLooping ? Colors.indigoAccent : Colors.white),
-                tooltip: 'تكرار الفيديو',
+                tooltip: context.tr('player_loop_video'),
                 onPressed: () {
                   setState(() => _isLooping = !_isLooping);
                   _controller.setLooping(_isLooping);

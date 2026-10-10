@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/localization/app_strings.dart';
+
 class LanguageProvider extends ChangeNotifier {
   static const _prefsKey = 'app_language';
   static const _supported = <Locale>[Locale('ar'), Locale('en')];
@@ -20,6 +22,9 @@ class LanguageProvider extends ChangeNotifier {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ];
+
+  /// ترجمة مباشرة من الـ Provider (للاستخدام خارج BuildContext)
+  String t(String key) => AppStrings.t(key, _locale.languageCode);
 
   Future<void> load() async {
     try {
@@ -52,7 +57,7 @@ class LanguageProvider extends ChangeNotifier {
         isArabic ? const Locale('en') : const Locale('ar'),
       );
 
-  // ─── Aliases للتوافق مع الكود القديم ─────────────────
+  // aliases للتوافق مع الكود القديم
   Future<void> toggleLanguage() => toggle();
   Future<void> setLanguage(String code) => setLocale(Locale(code));
 }

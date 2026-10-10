@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/localization/app_strings.dart';
 import '../../core/services/favorites_service.dart';
 import '../../core/services/media_scanner.dart';
 import '../../models/audio_track.dart';
@@ -14,7 +15,7 @@ class AudioScreen extends StatefulWidget {
 }
 
 class _AudioScreenState extends State<AudioScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   late TabController _tabController;
   List<AudioTrack> _tracks = [];
   bool _isScanning = false;
@@ -22,12 +23,20 @@ class _AudioScreenState extends State<AudioScreen>
   List<String> _favoritePaths = [];
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _loadFavorites();
-    // فحص تلقائي بعد أول frame
     WidgetsBinding.instance.addPostFrameCallback((_) => _autoScan());
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadFavorites() async {
@@ -38,10 +47,7 @@ class _AudioScreenState extends State<AudioScreen>
   Future<void> _autoScan() async {
     if (_hasScanned || _isScanning) return;
     setState(() => _isScanning = true);
-
-    // استخدم مؤشر ترابط منفصل داخل الحزمة نفسها
     final tracks = await MediaScanner.scanAudio();
-
     if (!mounted) return;
     setState(() {
       _tracks = tracks;
@@ -52,15 +58,17 @@ class _AudioScreenState extends State<AudioScreen>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final player = Provider.of<PlayerProvider>(context);
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('مكتبة الصوتيات'),
+        title: Text(context.tr('audio_library')),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            tooltip: 'إعادة الفحص',
+            tooltip: context.tr('audio_refresh'),
             onPressed: () {
               _hasScanned = false;
               _autoScan();
@@ -69,21 +77,21 @@ class _AudioScreenState extends State<AudioScreen>
         ],
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(text: 'جميع الصوتيات'),
-            Tab(text: 'المجلدات'),
-            Tab(text: 'المفضلة'),
+          tabs: [
+            Tab(text: context.tr('audio_all')),
+            Tab(text: context.tr('audio_folders')),
+            Tab(text: context.tr('audio_favorites')),
           ],
         ),
       ),
       body: _isScanning
-          ? const Center(
+          ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 12),
-                  Text('جاري فحص ملفات الجهاز...'),
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 12),
+                  Text(context.tr('audio_scanning')),
                 ],
               ),
             )
@@ -100,11 +108,11 @@ class _AudioScreenState extends State<AudioScreen>
 
   Widget _buildTrackList(List<AudioTrack> list, PlayerProvider player) {
     if (list.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Text(
-            'لا توجد ملفات صوتية في الجهاز.\nاسحب للتحديث أو اضغط أيقونة إعادة الفحص.',
+            context.tr('audio_empty'),
             textAlign: TextAlign.center,
           ),
         ),
@@ -128,11 +136,7 @@ class _AudioScreenState extends State<AudioScreen>
               color: Theme.of(context).colorScheme.primary,
             ),
           ),
-          title: Text(
-            t.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(
             '${t.artist} • ${t.album}',
             maxLines: 1,
@@ -155,16 +159,17 @@ class _AudioScreenState extends State<AudioScreen>
   }
 
   Widget _buildFoldersTab(PlayerProvider player) {
-    // تجميع حسب المجلد
     final Map<String, List<AudioTrack>> folders = {};
     for (final t in _tracks) {
       final parts = t.path.split('/');
-      final folder = parts.length >= 2 ? parts[parts.length - 2] : 'أخرى';
+      final folder = parts.length >= 2 ? parts[parts.length - 2] : '-';
       folders.putIfAbsent(folder, () => []).add(t);
     }
+
     if (folders.isEmpty) {
-      return const Center(child: Text('لا توجد مجلدات'));
+      return Center(child: Text(context.tr('audio_folders')));
     }
+
     final entries = folders.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
 
@@ -176,7 +181,7 @@ class _AudioScreenState extends State<AudioScreen>
         return ListTile(
           leading: const Icon(Icons.folder),
           title: Text(e.key),
-          subtitle: Text('${e.value.length} مقطع'),
+          subtitle: Text('${e.value.length} ${context.tr('audio_tracks')}'),
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(

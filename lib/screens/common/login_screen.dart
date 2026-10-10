@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/localization/app_strings.dart';
 import '../../providers/auth_provider.dart';
 import 'home_screen.dart';
 
@@ -37,11 +38,11 @@ class _LoginScreenState extends State<LoginScreen> {
     final fullName = _fullNameController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
-      setState(() => _errorMessage = 'يرجى إدخال البريد الإلكتروني وكلمة المرور');
+      setState(() => _errorMessage = context.tr('fill_email_password'));
       return;
     }
     if (_isSignUp && fullName.isEmpty) {
-      setState(() => _errorMessage = 'يرجى إدخال الاسم الكامل');
+      setState(() => _errorMessage = context.tr('fill_fullname'));
       return;
     }
 
@@ -67,7 +68,9 @@ class _LoginScreenState extends State<LoginScreen> {
     } else {
       setState(() {
         _errorMessage = auth.lastError ??
-            (_isSignUp ? 'فشل إنشاء الحساب' : 'فشل تسجيل الدخول');
+            (_isSignUp
+                ? context.tr('common_failed')
+                : context.tr('common_failed'));
       });
     }
   }
@@ -81,7 +84,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذر فتح Telegram')),
+        SnackBar(content: Text(context.tr('common_error'))),
       );
     }
   }
@@ -89,6 +92,21 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    // استخراج النصوص — يمنع مشكلة `const` مع `context.tr()`
+    final tTitle = _isSignUp
+        ? context.tr('signup_title')
+        : context.tr('login_title');
+    final tFullName = context.tr('fullname_label');
+    final tEmail = context.tr('email_label');
+    final tPassword = context.tr('password_label');
+    final tForgot = context.tr('forgot_password');
+    final tLoginBtn = context.tr('login_button');
+    final tSignupBtn = context.tr('signup_button');
+    final tGuestBtn = context.tr('guest_button');
+    final tSwitchToLogin = context.tr('switch_to_login');
+    final tSwitchToSignup = context.tr('switch_to_signup');
+    final tAppSubtitle = context.tr('app_name');
 
     return Scaffold(
       body: SafeArea(
@@ -112,20 +130,19 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  _isSignUp ? 'إنشاء حساب جديد' : 'تسجيل الدخول',
+                  tTitle,
                   style: theme.textTheme.headlineSmall
                       ?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'AR Music & Video Player',
+                  tAppSubtitle,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
                 const SizedBox(height: 32),
 
-                // ─── عرض الخطأ ───
                 if (_errorMessage != null) ...[
                   Container(
                     width: double.infinity,
@@ -164,7 +181,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     controller: _fullNameController,
                     textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
-                      labelText: 'الاسم الكامل',
+                      labelText: tFullName,
                       prefixIcon: const Icon(Icons.person_outline),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -181,7 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   autocorrect: false,
                   enableSuggestions: false,
                   decoration: InputDecoration(
-                    labelText: 'البريد الإلكتروني',
+                    labelText: tEmail,
                     prefixIcon: const Icon(Icons.email_outlined),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -196,7 +213,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   textInputAction: TextInputAction.done,
                   onSubmitted: (_) => _handleSubmit(),
                   decoration: InputDecoration(
-                    labelText: 'كلمة المرور',
+                    labelText: tPassword,
                     prefixIcon: const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
                       icon: Icon(
@@ -219,8 +236,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: TextButton.icon(
                       onPressed: _openTelegramBot,
                       icon: const Icon(Icons.send_rounded, size: 16),
-                      label: const Text(
-                          'نسيت كلمة المرور؟ (تواصل عبر بوت Telegram)'),
+                      label: Text(tForgot),
                     ),
                   ),
 
@@ -240,10 +256,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         ? const SizedBox(
                             width: 24,
                             height: 24,
-                            child:
-                                CircularProgressIndicator(strokeWidth: 2),
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : Text(_isSignUp ? 'إنشاء الحساب' : 'دخول'),
+                        : Text(_isSignUp ? tSignupBtn : tLoginBtn),
                   ),
                 ),
 
@@ -265,8 +280,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       );
                     },
                     icon: const Icon(Icons.person_pin_circle_outlined),
-                    label: const Text(
-                        'المتابعة كزائر (بدون تسجيل / Offline)'),
+                    label: Text(tGuestBtn),
                     style: OutlinedButton.styleFrom(
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -282,9 +296,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     _isSignUp = !_isSignUp;
                     _errorMessage = null;
                   }),
-                  child: Text(_isSignUp
-                      ? 'لديك حساب بالفعل؟ تسجيل الدخول'
-                      : 'ليس لديك حساب؟ إنشاء حساب جديد'),
+                  child: Text(_isSignUp ? tSwitchToLogin : tSwitchToSignup),
                 ),
               ],
             ),

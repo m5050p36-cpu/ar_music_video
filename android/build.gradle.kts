@@ -16,15 +16,15 @@ subprojects {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// إصلاح AGP 8.x مع إضافات Flutter القديمة (on_audio_query_android, إلخ)
+// إصلاح AGP 8.x مع إضافات Flutter القديمة
+// (namespace + Java 17) — بدون kotlinOptions المهجورة
 // ═══════════════════════════════════════════════════════════════
 subprojects {
     afterEvaluate {
-        // ─── 1. فرض Java 17 على كل الإضافات ───
         val androidExt = project.extensions.findByName("android")
         if (androidExt != null) {
+            // ─── 1. Java 17 على كل الإضافات ───
             try {
-                // compileOptions
                 val compileOptions = androidExt.javaClass
                     .getMethod("getCompileOptions")
                     .invoke(androidExt)
@@ -38,7 +38,7 @@ subprojects {
                 }
             } catch (_: Exception) { /* تجاهل */ }
 
-            // ─── 2. namespace patch للـ plugins القديمة ───
+            // ─── 2. namespace patch ───
             try {
                 val getNs = androidExt.javaClass.getMethod("getNamespace")
                 val currentNs = getNs.invoke(androidExt) as? String
@@ -60,18 +60,6 @@ subprojects {
                     "⚠️ Namespace patch failed for ${project.name}: ${e.message}"
                 )
             }
-        }
-
-        // ─── 3. إجبار Kotlin jvmTarget = 17 على كل المشاريع الفرعية ───
-        try {
-            project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java)
-                .configureEach {
-                    kotlinOptions {
-                        jvmTarget = "17"
-                    }
-                }
-        } catch (_: Exception) {
-            // إذا لم تكن الإضافة تستخدم Kotlin، نتجاهل
         }
     }
 }

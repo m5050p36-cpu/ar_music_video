@@ -13,21 +13,20 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+// ✅ DSL الجديد الصحيح لـ Kotlin — يستخدم JvmToolchain بدل kotlinOptions
+kotlin {
+    jvmToolchain(17)
+}
+
 android {
     namespace = "com.m5050p36.armusic"
     compileSdk = 36
-
-    // ✅ تم التحديث: NDK 28 (متوافق مع إضافة jni ومع كل الإضافات القديمة)
     ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
         isCoreLibraryDesugaringEnabled = true
-    }
-
-    kotlinOptions {
-        jvmTarget = "17"
     }
 
     defaultConfig {

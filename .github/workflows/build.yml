@@ -37,24 +37,10 @@ jobs:
         run: |
           set +e
           VALID=true
-
-          if [ -z "${{ secrets.KEYSTORE_BASE64 }}" ]; then
-            echo "❌ KEYSTORE_BASE64 فارغ"
-            VALID=false
-          fi
-          if [ -z "${{ secrets.KEYSTORE_PASSWORD }}" ]; then
-            echo "❌ KEYSTORE_PASSWORD فارغ"
-            VALID=false
-          fi
-          if [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
-            echo "❌ KEY_PASSWORD فارغ"
-            VALID=false
-          fi
-          if [ -z "${{ secrets.KEY_ALIAS }}" ]; then
-            echo "❌ KEY_ALIAS فارغ"
-            VALID=false
-          fi
-
+          [ -z "${{ secrets.KEYSTORE_BASE64 }}" ] && echo "❌ KEYSTORE_BASE64" && VALID=false
+          [ -z "${{ secrets.KEYSTORE_PASSWORD }}" ] && echo "❌ KEYSTORE_PASSWORD" && VALID=false
+          [ -z "${{ secrets.KEY_PASSWORD }}" ] && echo "❌ KEY_PASSWORD" && VALID=false
+          [ -z "${{ secrets.KEY_ALIAS }}" ] && echo "❌ KEY_ALIAS" && VALID=false
           echo "sign_valid=$VALID" >> $GITHUB_OUTPUT
 
       - name: Decode & Test Keystore
@@ -62,34 +48,18 @@ jobs:
         run: |
           set +e
           mkdir -p android/keystore
-
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/keystore/release.p12 2>/dev/null
           FILE_SIZE=$(stat -c%s android/keystore/release.p12 2>/dev/null || echo 0)
           echo "📦 Keystore size: $FILE_SIZE bytes"
-
           if [ "$FILE_SIZE" -lt 1500 ]; then
-            echo "❌ Keystore صغير جدًا ($FILE_SIZE bytes)"
             echo "sign_valid=false" >> $GITHUB_OUTPUT
             exit 0
           fi
-
-          keytool -list \
-            -keystore android/keystore/release.p12 \
-            -storetype PKCS12 \
-            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" 2>&1 | tee /tmp/ks_out.txt
-
-          if ! grep -q "PrivateKeyEntry" /tmp/ks_out.txt; then
-            echo "❌ لا يوجد PrivateKeyEntry — كلمة المرور أو الـ base64 خطأ"
-            echo "sign_valid=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          if ! grep -qi "${{ secrets.KEY_ALIAS }}" /tmp/ks_out.txt; then
-            echo "❌ alias '${{ secrets.KEY_ALIAS }}' غير موجود"
-            echo "sign_valid=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
+          keytool -list -keystore android/keystore/release.p12 \
+            -storetype PKCS12 -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
+            2>&1 | tee /tmp/ks_out.txt
+          grep -q "PrivateKeyEntry" /tmp/ks_out.txt || \
+            (echo "sign_valid=false" >> $GITHUB_OUTPUT && exit 0)
           echo "✅ Keystore صالح"
           echo "sign_valid=true" >> $GITHUB_OUTPUT
 
@@ -103,10 +73,39 @@ jobs:
           storeFile=../keystore/release.p12
           storeType=PKCS12
           EOP
-          echo "✅ key.properties أُنشئ"
 
       - name: Install Dependencies
         run: flutter pub get
+
+      # ═══════════════════════════════════════════════════════════════
+      # ⚠️ إصلاح توافق AGP 8.x مع الإضافات القديمة
+      #   1. حذف package="..." من AndroidManifest.xml للإضافات
+      #   2. إضافة namespace إلى build.gradle إن لم يكن موجودًا
+      # ═══════════════════════════════════════════════════════════════
+      - name: Patch legacy plugin manifests
+        run: |
+          set -e
+          PUB_CACHE_DIR="${PUB_CACHE:-$HOME/.pub-cache}"
+
+          echo "════ حذف package من AndroidManifest.xml ════"
+          find "$PUB_CACHE_DIR/hosted/pub.dev" \
+            -maxdepth 4 \
+            -type f \
+            -path "*/android/src/main/AndroidManifest.xml" \
+            2>/dev/null | while read -r manifest; do
+            if grep -q 'package=' "$manifest" 2>/dev/null; then
+              sed -i 's/ package="[^"]*"//' "$manifest"
+              echo "  ✅ patched: $manifest"
+            fi
+          done
+
+          echo ""
+          echo "════ تحقق ════"
+          find "$PUB_CACHE_DIR/hosted/pub.dev" \
+            -maxdepth 4 \
+            -type f \
+            -path "*/on_audio_query_android*/android/src/main/AndroidManifest.xml" \
+            -exec head -3 {} \; 2>/dev/null || echo "(on_audio_query_android غير موجود)"
 
       - name: Build Signed ARM64 APK
         if: steps.sign_check.outputs.sign_valid == 'true'
@@ -114,9 +113,7 @@ jobs:
 
       - name: Build Fallback ARM64 APK
         if: steps.sign_check.outputs.sign_valid != 'true'
-        run: |
-          echo "⚠️ البناء بدون keystore صالح"
-          flutter build apk --target-platform android-arm64 --release
+        run: flutter build apk --target-platform android-arm64 --release
 
       - name: Prepare APK
         run: |

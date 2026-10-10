@@ -2,13 +2,17 @@ package com.m5050p36.armusic
 
 import android.app.PictureInPictureParams
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import android.util.Rational
-import io.flutter.embedding.android.FlutterActivity
+import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
-class MainActivity : FlutterActivity() {
+// ⚠️ مهم جدًا: AudioServiceActivity بدل FlutterActivity
+// بدون هذا، just_audio_background لا يعمل مطلقًا
+class MainActivity : AudioServiceActivity() {
+
     private val CHANNEL = "com.m5050p36.armusic/pip"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -43,15 +47,6 @@ class MainActivity : FlutterActivity() {
                             )
                     result.success(supported)
                 }
-                "exitPiP" -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        // exitPictureInPicture() متاح من API 31
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            // لا API رسمي، الحل هو bringToFront
-                        }
-                    }
-                    result.success(true)
-                }
                 else -> result.notImplemented()
             }
         }
@@ -59,9 +54,8 @@ class MainActivity : FlutterActivity() {
 
     override fun onPictureInPictureModeChanged(
         isInPictureInPictureMode: Boolean,
-        newConfig: android.content.res.Configuration
+        newConfig: Configuration
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        // يمكن إرسال إشعار للـ Dart عبر EventChannel لاحقًا
     }
 }

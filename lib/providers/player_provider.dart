@@ -1,5 +1,7 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,8 +28,8 @@ class PlayerProvider extends ChangeNotifier {
 
   DateTime _lastPositionSave = DateTime.now();
   bool _disposed = false;
+  String? _lastPlaybackError;
 
-  // Stream subscriptions (لإلغائها عند dispose)
   StreamSubscription<PlayerState>? _stateSub;
   StreamSubscription<Duration>? _positionSub;
 
@@ -44,6 +46,7 @@ class PlayerProvider extends ChangeNotifier {
   Duration? get pointA => _pointA;
   Duration? get pointB => _pointB;
   Duration? get remainingSleepDuration => _remainingSleepDuration;
+  String? get lastPlaybackError => _lastPlaybackError;
 
   PlayerProvider() {
     _initListeners();
@@ -97,31 +100,59 @@ class PlayerProvider extends ChangeNotifier {
     if (index < 0 || index >= _playlist.length) return;
     _currentIndex = index;
     _currentTrackRepeatCounter = 0;
+    _lastPlaybackError = null;
+
     final track = _playlist[index];
 
+    // تحقق أن الملف موجود فعلًا
     try {
+      final exists = await File(track.path).exists();
+      if (!exists) {
+        _lastPlaybackError = 'الملف غير موجود: ${track.path}';
+        debugPrint('❌ File not found: ${track.path}');
+        notifyListeners();
+        return;
+      }
+    } catch (e) {
+      debugPrint('File check error: $e');
+    }
+
+    try {
+      debugPrint('▶️ Playing: ${track.title} | path=${track.path}');
+
       final mediaItem = MediaItem(
         id: track.id,
-        album: track.album,
-        title: track.title,
-        artist: track.artist,
-        artUri: track.albumArtUri != null ? Uri.parse(track.albumArtUri!) : null,
+        album: track.album.isNotEmpty ? track.album : 'ألبوم عام',
+        title: track.title.isNotEmpty ? track.title : 'مقطع صوتي',
+        artist: track.artist.isNotEmpty ? track.artist : 'فنان غير معروف',
       );
 
-      await _player.setAudioSource(
-        AudioSource.uri(Uri.file(track.path), tag: mediaItem),
+      // File URI — لا نستخدم Uri.parse لأن المسار قد يحتوي على أحرف خاصة
+      final audioSource = AudioSource.file(
+        track.path,
+        tag: mediaItem,
       );
+
+      await _player.setAudioSource(audioSource);
       await _player.setSpeed(_speed);
 
-      final prefs = await SharedPreferences.getInstance();
-      final lastSecs = prefs.getInt('last_pos_${track.id}') ?? 0;
-      if (lastSecs > 0) {
-        await _player.seek(Duration(seconds: lastSecs));
-      }
+      // استعادة آخر موضع
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final lastSecs = prefs.getInt('last_pos_${track.id}') ?? 0;
+        if (lastSecs > 0) {
+          await _player.seek(Duration(seconds: lastSecs));
+        }
+      } catch (_) {}
+
       await _player.play();
       notifyListeners();
-    } catch (e) {
-      debugPrint('Error playing track: $e');
+      debugPrint('✅ Playing started');
+    } catch (e, st) {
+      _lastPlaybackError = 'خطأ في التشغيل: $e';
+      debugPrint('❌ playTrackAtIndex error: $e');
+      if (kDebugMode) debugPrintStack(stackTrace: st);
+      notifyListeners();
     }
   }
 
@@ -199,8 +230,7 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   void toggleLoopMode() {
-    final nextIndex =
-        (_loopMode.index + 1) % CustomLoopMode.values.length;
+    final nextIndex = (_loopMode.index + 1) % CustomLoopMode.values.length;
     _loopMode = CustomLoopMode.values[nextIndex];
     _currentTrackRepeatCounter = 0;
     notifyListeners();
@@ -251,8 +281,10 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> _saveLastPosition(Duration pos) async {
     final current = currentTrack;
     if (current == null) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('last_pos_${current.id}', pos.inSeconds);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('last_pos_${current.id}', pos.inSeconds);
+    } catch (_) {}
   }
 
   @override

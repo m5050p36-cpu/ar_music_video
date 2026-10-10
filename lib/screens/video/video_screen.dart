@@ -1,9 +1,9 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:photo_manager/photo_manager.dart';
+import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
+
+import '../../core/services/media_scanner.dart';
 import '../../models/video_item.dart';
-import '../../core/services/video_thumbnail_service.dart';
 import 'video_player_screen.dart';
 
 class VideoScreen extends StatefulWidget {
@@ -13,39 +13,31 @@ class VideoScreen extends StatefulWidget {
   State<VideoScreen> createState() => _VideoScreenState();
 }
 
-class _VideoScreenState extends State<VideoScreen> with SingleTickerProviderStateMixin {
+class _VideoScreenState extends State<VideoScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   List<VideoItem> _videos = [];
-  bool _isLoading = false;
+  bool _isScanning = false;
+  bool _hasScanned = false;
   bool _isGridView = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _autoScan());
   }
 
-  Future<void> _pickVideos() async {
-    setState(() => _isLoading = true);
-    try {
-      await [Permission.videos, Permission.storage].request();
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.video,
-        allowMultiple: true,
-      );
-
-      if (result != null && result.paths.isNotEmpty) {
-        final paths = result.paths.whereType<String>().toList();
-        final parsed = await VideoThumbnailService.generateThumbnailsInBatches(paths);
-        setState(() {
-          _videos = parsed;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error picking videos: $e');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+  Future<void> _autoScan() async {
+    if (_hasScanned || _isScanning) return;
+    setState(() => _isScanning = true);
+    final videos = await MediaScanner.scanVideos();
+    if (!mounted) return;
+    setState(() {
+      _videos = videos;
+      _isScanning = false;
+      _hasScanned = true;
+    });
   }
 
   void _openPlayer(VideoItem v) {
@@ -64,14 +56,19 @@ class _VideoScreenState extends State<VideoScreen> with SingleTickerProviderStat
         title: const Text('مكتبة الفيديوهات'),
         actions: [
           IconButton(
-            icon: Icon(_isGridView ? Icons.view_list_rounded : Icons.grid_view_rounded),
+            icon: Icon(
+              _isGridView ? Icons.view_list_rounded : Icons.grid_view_rounded,
+            ),
             tooltip: _isGridView ? 'عرض كقائمة' : 'عرض كشبكة',
             onPressed: () => setState(() => _isGridView = !_isGridView),
           ),
           IconButton(
-            icon: const Icon(Icons.video_call_outlined),
-            tooltip: 'إضافة فيديوهات من الجهاز',
-            onPressed: _pickVideos,
+            icon: const Icon(Icons.refresh),
+            tooltip: 'إعادة الفحص',
+            onPressed: () {
+              _hasScanned = false;
+              _autoScan();
+            },
           ),
         ],
         bottom: TabBar(
@@ -82,8 +79,17 @@ class _VideoScreenState extends State<VideoScreen> with SingleTickerProviderStat
           ],
         ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+      body: _isScanning
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 12),
+                  Text('جاري فحص فيديوهات الجهاز...'),
+                ],
+              ),
+            )
           : TabBarView(
               controller: _tabController,
               children: [
@@ -96,23 +102,13 @@ class _VideoScreenState extends State<VideoScreen> with SingleTickerProviderStat
 
   Widget _buildAllVideosTab() {
     if (_videos.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Opacity(
-              opacity: 0.5,
-              child: Icon(Icons.video_library_outlined, size: 64),
-            ),
-            const SizedBox(height: 12),
-            const Text('لا توجد فيديوهات مضافة بعد'),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _pickVideos,
-              icon: const Icon(Icons.folder_open),
-              label: const Text('تصفح واختيار فيديوهات الجهاز'),
-            ),
-          ],
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'لا توجد فيديوهات في الجهاز.',
+            textAlign: TextAlign.center,
+          ),
         ),
       );
     }
@@ -136,9 +132,12 @@ class _VideoScreenState extends State<VideoScreen> with SingleTickerProviderStat
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  v.thumbnailPath != null
-                      ? Image.file(File(v.thumbnailPath!), fit: BoxFit.cover)
-                      : Container(color: Colors.black45, child: const Icon(Icons.play_circle_outline, size: 40)),
+                  // 🎯 lazy thumbnail — PhotoManager يولّدها بنفسه بدون خدمة خارجية
+                  AssetEntityImageProvider(
+                    AssetEntity.fromId(v.id) as dynamic,
+                    isOriginal: false,
+                    thumbnailSize: const ThumbnailSize(400, 300),
+                  ) as Widget,
                   Positioned(
                     bottom: 0,
                     left: 0,
@@ -156,7 +155,11 @@ class _VideoScreenState extends State<VideoScreen> with SingleTickerProviderStat
                         v.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
@@ -170,22 +173,13 @@ class _VideoScreenState extends State<VideoScreen> with SingleTickerProviderStat
 
     return ListView.builder(
       itemCount: _videos.length,
+      itemExtent: 72,
       itemBuilder: (context, i) {
         final v = _videos[i];
         return ListTile(
-          leading: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
-              width: 56,
-              height: 40,
-              child: v.thumbnailPath != null
-                  ? Image.file(File(v.thumbnailPath!), fit: BoxFit.cover)
-                  : const ColoredBox(color: Colors.black26, child: Icon(Icons.play_arrow)),
-            ),
-          ),
+          leading: const Icon(Icons.play_circle_outline),
           title: Text(v.title, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(v.folderName, maxLines: 1),
-          trailing: const Icon(Icons.play_circle_fill_rounded),
           onTap: () => _openPlayer(v),
         );
       },
@@ -193,6 +187,74 @@ class _VideoScreenState extends State<VideoScreen> with SingleTickerProviderStat
   }
 
   Widget _buildAlbumsTab() {
-    return const Center(child: Text('تصنيف الفيديوهات حسب مجلدات الذاكرة'));
+    final Map<String, List<VideoItem>> albums = {};
+    for (final v in _videos) {
+      albums.putIfAbsent(v.folderName, () => []).add(v);
+    }
+    if (albums.isEmpty) {
+      return const Center(child: Text('لا توجد ألبومات'));
+    }
+    final entries = albums.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+
+    return ListView.builder(
+      itemCount: entries.length,
+      itemExtent: 64,
+      itemBuilder: (context, i) {
+        final e = entries[i];
+        return ListTile(
+          leading: const Icon(Icons.folder),
+          title: Text(e.key),
+          subtitle: Text('${e.value.length} فيديو'),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => _AlbumVideosScreen(
+                albumName: e.key,
+                videos: e.value,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _AlbumVideosScreen extends StatelessWidget {
+  final String albumName;
+  final List<VideoItem> videos;
+
+  const _AlbumVideosScreen({
+    required this.albumName,
+    required this.videos,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(albumName)),
+      body: ListView.builder(
+        itemCount: videos.length,
+        itemExtent: 72,
+        itemBuilder: (context, i) {
+          final v = videos[i];
+          return ListTile(
+            leading: const Icon(Icons.play_circle_outline),
+            title:
+                Text(v.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => VideoPlayerScreen(
+                  videoPath: v.path,
+                  title: v.title,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 }

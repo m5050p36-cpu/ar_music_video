@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:permission_handler/permission_handler.dart';
-import '../../providers/player_provider.dart';
-import '../../core/services/metadata_service.dart';
+
 import '../../core/services/favorites_service.dart';
+import '../../core/services/media_scanner.dart';
 import '../../models/audio_track.dart';
+import '../../providers/player_provider.dart';
 
 class AudioScreen extends StatefulWidget {
   const AudioScreen({super.key});
@@ -14,10 +13,12 @@ class AudioScreen extends StatefulWidget {
   State<AudioScreen> createState() => _AudioScreenState();
 }
 
-class _AudioScreenState extends State<AudioScreen> with SingleTickerProviderStateMixin {
+class _AudioScreenState extends State<AudioScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   List<AudioTrack> _tracks = [];
-  bool _isLoading = false;
+  bool _isScanning = false;
+  bool _hasScanned = false;
   List<String> _favoritePaths = [];
 
   @override
@@ -25,6 +26,8 @@ class _AudioScreenState extends State<AudioScreen> with SingleTickerProviderStat
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _loadFavorites();
+    // فحص تلقائي بعد أول frame
+    WidgetsBinding.instance.addPostFrameCallback((_) => _autoScan());
   }
 
   Future<void> _loadFavorites() async {
@@ -32,31 +35,19 @@ class _AudioScreenState extends State<AudioScreen> with SingleTickerProviderStat
     if (mounted) setState(() => _favoritePaths = favs);
   }
 
-  Future<void> _pickAudioFiles() async {
-    setState(() => _isLoading = true);
-    try {
-      await [Permission.audio, Permission.storage].request();
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['mp3', 'm4a', 'flac', 'wav', 'aac'],
-        allowMultiple: true,
-      );
+  Future<void> _autoScan() async {
+    if (_hasScanned || _isScanning) return;
+    setState(() => _isScanning = true);
 
-      if (result != null && result.paths.isNotEmpty) {
-        final paths = result.paths.whereType<String>().toList();
-        final parsed = await MetadataService.scanAndParseFiles(paths);
-        setState(() {
-          _tracks = parsed;
-        });
-        if (mounted && _tracks.isNotEmpty) {
-          Provider.of<PlayerProvider>(context, listen: false).setPlaylist(_tracks);
-        }
-      }
-    } catch (e) {
-      debugPrint('Error picking files: $e');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    // استخدم مؤشر ترابط منفصل داخل الحزمة نفسها
+    final tracks = await MediaScanner.scanAudio();
+
+    if (!mounted) return;
+    setState(() {
+      _tracks = tracks;
+      _isScanning = false;
+      _hasScanned = true;
+    });
   }
 
   @override
@@ -68,9 +59,12 @@ class _AudioScreenState extends State<AudioScreen> with SingleTickerProviderStat
         title: const Text('مكتبة الصوتيات'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add_box_outlined),
-            tooltip: 'إضافة صوتيات من الذاكرة',
-            onPressed: _pickAudioFiles,
+            icon: const Icon(Icons.refresh),
+            tooltip: 'إعادة الفحص',
+            onPressed: () {
+              _hasScanned = false;
+              _autoScan();
+            },
           ),
         ],
         bottom: TabBar(
@@ -82,13 +76,22 @@ class _AudioScreenState extends State<AudioScreen> with SingleTickerProviderStat
           ],
         ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+      body: _isScanning
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 12),
+                  Text('جاري فحص ملفات الجهاز...'),
+                ],
+              ),
+            )
           : TabBarView(
               controller: _tabController,
               children: [
                 _buildTrackList(_tracks, player),
-                _buildFoldersTab(),
+                _buildFoldersTab(player),
                 _buildFavoritesTab(player),
               ],
             ),
@@ -97,29 +100,20 @@ class _AudioScreenState extends State<AudioScreen> with SingleTickerProviderStat
 
   Widget _buildTrackList(List<AudioTrack> list, PlayerProvider player) {
     if (list.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Opacity(
-              opacity: 0.5,
-              child: Icon(Icons.music_off_outlined, size: 64),
-            ),
-            const SizedBox(height: 12),
-            const Text('لا توجد ملفات صوتية بعد'),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _pickAudioFiles,
-              icon: const Icon(Icons.folder_open),
-              label: const Text('تصفح واختيار ملفات الجهاز'),
-            ),
-          ],
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'لا توجد ملفات صوتية في الجهاز.\nاسحب للتحديث أو اضغط أيقونة إعادة الفحص.',
+            textAlign: TextAlign.center,
+          ),
         ),
       );
     }
 
     return ListView.builder(
       itemCount: list.length,
+      itemExtent: 68,
       itemBuilder: (context, i) {
         final t = list[i];
         final isPlaying = player.currentTrack?.id == t.id;
@@ -127,35 +121,110 @@ class _AudioScreenState extends State<AudioScreen> with SingleTickerProviderStat
 
         return ListTile(
           leading: CircleAvatar(
-            backgroundColor: Theme.of(context).colorScheme.primary.withAlpha(40),
+            backgroundColor:
+                Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
             child: Icon(
               isPlaying ? Icons.equalizer_rounded : Icons.music_note,
               color: Theme.of(context).colorScheme.primary,
             ),
           ),
-          title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text('${t.artist} • ${t.album}', maxLines: 1),
+          title: Text(
+            t.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            '${t.artist} • ${t.album}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           trailing: IconButton(
-            icon: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? Colors.redAccent : null),
+            icon: Icon(
+              isFav ? Icons.favorite : Icons.favorite_border,
+              color: isFav ? Colors.redAccent : null,
+            ),
             onPressed: () async {
               await FavoritesService.toggleFavorite(t.path);
               _loadFavorites();
             },
           ),
-          onTap: () {
-            player.setPlaylist(list, startIndex: i);
-          },
+          onTap: () => player.setPlaylist(list, startIndex: i),
         );
       },
     );
   }
 
-  Widget _buildFoldersTab() {
-    return const Center(child: Text('عرض المجلدات التلقائي'));
+  Widget _buildFoldersTab(PlayerProvider player) {
+    // تجميع حسب المجلد
+    final Map<String, List<AudioTrack>> folders = {};
+    for (final t in _tracks) {
+      final parts = t.path.split('/');
+      final folder = parts.length >= 2 ? parts[parts.length - 2] : 'أخرى';
+      folders.putIfAbsent(folder, () => []).add(t);
+    }
+    if (folders.isEmpty) {
+      return const Center(child: Text('لا توجد مجلدات'));
+    }
+    final entries = folders.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+
+    return ListView.builder(
+      itemCount: entries.length,
+      itemExtent: 64,
+      itemBuilder: (context, i) {
+        final e = entries[i];
+        return ListTile(
+          leading: const Icon(Icons.folder),
+          title: Text(e.key),
+          subtitle: Text('${e.value.length} مقطع'),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => _FolderTracksScreen(
+                folderName: e.key,
+                tracks: e.value,
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildFavoritesTab(PlayerProvider player) {
-    final favTracks = _tracks.where((t) => _favoritePaths.contains(t.path)).toList();
+    final favTracks =
+        _tracks.where((t) => _favoritePaths.contains(t.path)).toList();
     return _buildTrackList(favTracks, player);
+  }
+}
+
+class _FolderTracksScreen extends StatelessWidget {
+  final String folderName;
+  final List<AudioTrack> tracks;
+
+  const _FolderTracksScreen({
+    required this.folderName,
+    required this.tracks,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final player = Provider.of<PlayerProvider>(context);
+    return Scaffold(
+      appBar: AppBar(title: Text(folderName)),
+      body: ListView.builder(
+        itemCount: tracks.length,
+        itemExtent: 68,
+        itemBuilder: (context, i) {
+          final t = tracks[i];
+          return ListTile(
+            leading: const Icon(Icons.music_note),
+            title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text(t.artist, maxLines: 1),
+            onTap: () => player.setPlaylist(tracks, startIndex: i),
+          );
+        },
+      ),
+    );
   }
 }

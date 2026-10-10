@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -14,11 +15,15 @@ class AuthProvider extends ChangeNotifier {
   Map<String, dynamic>? _profile;
   bool _disposed = false;
 
+  StreamSubscription<AuthState>? _authSub;
+  Timer? _initPoll;
+
   AuthStatus get status => _status;
   User? get currentUser => _currentUser;
   Map<String, dynamic>? get profile => _profile;
   bool get isAdmin =>
       _profile?['role'] == 'admin' || _profile?['role'] == 'superuser';
+  bool get isSuperuser => _profile?['role'] == 'superuser';
   bool get isGuest => _status == AuthStatus.guest;
   bool get isAuthenticated => _status == AuthStatus.authenticated;
 
@@ -31,23 +36,34 @@ class AuthProvider extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final isGuestSaved = prefs.getBool(_guestKey) ?? false;
 
-      // 1. إن اختار الزائر سابقًا، ابدأ guest فورًا
       if (isGuestSaved) {
         _setStatus(AuthStatus.guest);
         return;
       }
 
-      // 2. إن لم تُهيأ Supabase → unauthenticated (سيُرى شاشة Login)
+      // انتظر Supabase لحد 5 ثواني
+      var waited = 0;
+      while (!SupabaseService.isInitialized && waited < 50) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        waited++;
+      }
+
       if (!SupabaseService.isInitialized) {
         _setStatus(AuthStatus.unauthenticated);
         return;
       }
 
-      // 3. هل هناك جلسة محفوظة؟
-      final user = SupabaseService.client.auth.currentUser;
-      if (user != null) {
-        _currentUser = user;
-        _profile = await SupabaseService.getCurrentUserProfile();
+      // 1. اربط listener — سيُحدّث الحالة تلقائيًا عند أي تغيير
+      _authSub = SupabaseService.client.auth.onAuthStateChange.listen(
+        _onAuthChange,
+        onError: (e) => debugPrint('auth stream error: $e'),
+      );
+
+      // 2. اقرأ الجلسة الحالية (تُستعاد من التخزين المحلي فورًا)
+      final session = SupabaseService.client.auth.currentSession;
+      if (session?.user != null) {
+        _currentUser = session!.user;
+        await _loadProfile();
         _setStatus(AuthStatus.authenticated);
       } else {
         _setStatus(AuthStatus.unauthenticated);
@@ -56,6 +72,44 @@ class AuthProvider extends ChangeNotifier {
       debugPrint('AuthProvider._initAuth error: $e');
       _setStatus(AuthStatus.unauthenticated);
     }
+  }
+
+  Future<void> _onAuthChange(AuthState state) async {
+    if (_disposed) return;
+    final event = state.event;
+    final session = state.session;
+
+    if (session?.user != null) {
+      _currentUser = session!.user;
+      await _loadProfile();
+      _setStatus(AuthStatus.authenticated);
+    } else {
+      _currentUser = null;
+      _profile = null;
+      if (event == AuthChangeEvent.signedOut) {
+        _setStatus(AuthStatus.unauthenticated);
+      }
+    }
+  }
+
+  Future<void> _loadProfile() async {
+    if (_currentUser == null) return;
+    // حاول 3 مرات — الأول قد يفشل بسبب RLS timing
+    for (var i = 0; i < 3; i++) {
+      final p = await SupabaseService.getCurrentUserProfile();
+      if (p != null) {
+        _profile = p;
+        return;
+      }
+      await Future.delayed(const Duration(milliseconds: 400));
+    }
+    _profile = null;
+  }
+
+  /// يستدعيها التطبيق عند استئناف التشغيل
+  Future<void> refreshProfile() async {
+    await _loadProfile();
+    if (!_disposed) notifyListeners();
   }
 
   void _setStatus(AuthStatus s) {
@@ -76,7 +130,7 @@ class AuthProvider extends ChangeNotifier {
         _currentUser = res.user;
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool(_guestKey, false);
-        _profile = await SupabaseService.getCurrentUserProfile();
+        await _loadProfile();
         _setStatus(AuthStatus.authenticated);
         return true;
       }
@@ -107,7 +161,8 @@ class AuthProvider extends ChangeNotifier {
         _currentUser = res.user;
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool(_guestKey, false);
-        _profile = await SupabaseService.getCurrentUserProfile();
+        await Future.delayed(const Duration(milliseconds: 800));
+        await _loadProfile();
         _setStatus(AuthStatus.authenticated);
         return true;
       }
@@ -149,6 +204,8 @@ class AuthProvider extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _authSub?.cancel();
+    _initPoll?.cancel();
     super.dispose();
   }
 }

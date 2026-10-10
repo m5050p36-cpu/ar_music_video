@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 
 import '../../core/services/media_scanner.dart';
@@ -21,7 +22,7 @@ class _VideoScreenState extends State<VideoScreen>
   bool _isGridView = true;
 
   @override
-  bool get wantKeepAlive => true; // لا نُعيد البناء عند تبديل التبويبات
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -61,7 +62,7 @@ class _VideoScreenState extends State<VideoScreen>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // ضروري لـ AutomaticKeepAliveClientMixin
+    super.build(context);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -114,16 +115,16 @@ class _VideoScreenState extends State<VideoScreen>
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // عرض الصورة المصغرة — يستخدم AssetEntityImageWidget
-  // يعتمد على MediaStore (سريع، بدون قراءة الملف)
+  // صورة مصغرة عبر MediaStore — سريعة، lazy، بدون قراءة الملف
   // ═══════════════════════════════════════════════════════════════
   Widget _buildThumbnail(VideoItem v) {
     if (v.asset != null) {
       return AssetEntityImage(
         v.asset!,
         isOriginal: false,
-        thumbnailSize: const ThumbnailSize.square(400),
-        thumbnailFormat: ThumbnailFormat.jpeg,
+        // ✅ الباني الأساسي — متاح في كل الإصدارات
+        thumbnailSize: const ThumbnailSize(400, 400),
+        // ❌ حذف thumbnailFormat — القيمة الافتراضية jpeg
         fit: BoxFit.cover,
         filterQuality: FilterQuality.medium,
         errorBuilder: (_, __, ___) => _thumbnailFallback(),
@@ -178,7 +179,6 @@ class _VideoScreenState extends State<VideoScreen>
                 fit: StackFit.expand,
                 children: [
                   _buildThumbnail(v),
-                  // شارة المدة (إن وُجدت)
                   if (v.duration.inSeconds > 0)
                     Positioned(
                       top: 6,
@@ -202,7 +202,6 @@ class _VideoScreenState extends State<VideoScreen>
                         ),
                       ),
                     ),
-                  // طبقة العنوان السفلية
                   Positioned(
                     bottom: 0,
                     left: 0,
@@ -236,7 +235,6 @@ class _VideoScreenState extends State<VideoScreen>
       );
     }
 
-    // عرض كقائمة
     return ListView.builder(
       itemCount: _videos.length,
       itemBuilder: (context, i) {
@@ -254,11 +252,7 @@ class _VideoScreenState extends State<VideoScreen>
               child: _buildThumbnail(v),
             ),
           ),
-          title: Text(
-            v.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          title: Text(v.title, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(
             '${v.folderName} • ${_formatDuration(v.duration)}',
             maxLines: 1,

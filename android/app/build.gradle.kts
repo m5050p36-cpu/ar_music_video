@@ -7,7 +7,6 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// قراءة بيانات التوقيع من key.properties (لا تُرفع على git)
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
@@ -17,7 +16,9 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = "com.m5050p36.armusic"
     compileSdk = 36
-    ndkVersion = "27.0.12077973"
+
+    // ✅ تم التحديث: NDK 28 (متوافق مع إضافة jni ومع كل الإضافات القديمة)
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

@@ -4,13 +4,11 @@ import 'package:photo_manager/photo_manager.dart';
 import '../../models/audio_track.dart';
 import '../../models/video_item.dart';
 
-/// فحص تلقائي لوسائط الجهاز عبر MediaStore — بدون اختيار يدوي.
 class MediaScanner {
   MediaScanner._();
 
   static final OnAudioQuery _audioQuery = OnAudioQuery();
 
-  /// يفحص كل مقاطع الصوت في الجهاز
   static Future<List<AudioTrack>> scanAudio() async {
     try {
       final granted = await _audioQuery.permissionsStatus();
@@ -52,7 +50,6 @@ class MediaScanner {
     }
   }
 
-  /// يجلب صورة غلاف مقطع واحد (lazy — عند الطلب فقط)
   static Future<List<int>?> getAlbumArt(int songId) async {
     try {
       return await _audioQuery.queryArtwork(
@@ -66,7 +63,6 @@ class MediaScanner {
     }
   }
 
-  /// يفحص كل الفيديوهات في الجهاز
   static Future<List<VideoItem>> scanVideos() async {
     try {
       final permission = await PhotoManager.requestPermissionExtend(
@@ -119,6 +115,7 @@ class MediaScanner {
             folderName: folder,
             duration: Duration(seconds: a.duration),
             thumbnailPath: null,
+            asset: a, // ← نمرر AssetEntity لاستخدامه في الواجهة
           ),
         );
       }

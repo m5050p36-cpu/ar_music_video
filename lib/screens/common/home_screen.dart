@@ -17,6 +17,7 @@ import '../admin/admin_panel_screen.dart';
 import '../audio/audio_screen.dart';
 import '../video/video_screen.dart';
 import 'about_screen.dart';
+import 'coming_soon_screen.dart';
 import 'login_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'profile_screen.dart';
@@ -328,36 +329,46 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildCenterBrand(ThemeData theme) {
-    return Container(
-      width: 52,
-      height: 52,
-      margin: const EdgeInsets.symmetric(horizontal: 6),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            theme.colorScheme.primary,
-            theme.colorScheme.secondary,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: theme.colorScheme.primary.withValues(alpha: 0.45),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const ComingSoonScreen(),
           ),
-        ],
-      ),
-      child: Center(
-        child: Text(
-          'AR',
-          style: TextStyle(
-            color: theme.colorScheme.onPrimary,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-            letterSpacing: 0.5,
+        );
+      },
+      child: Container(
+        width: 52,
+        height: 52,
+        margin: const EdgeInsets.symmetric(horizontal: 6),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              theme.colorScheme.primary,
+              theme.colorScheme.secondary,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: theme.colorScheme.primary.withValues(alpha: 0.45),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            'AR',
+            style: TextStyle(
+              color: theme.colorScheme.onPrimary,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              letterSpacing: 0.5,
+            ),
           ),
         ),
       ),

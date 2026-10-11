@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/localization/app_strings.dart';
 import '../../providers/player_provider.dart';
+import '../../widgets/track_artwork.dart';
 
 class FullPlayerScreen extends StatelessWidget {
   const FullPlayerScreen({super.key});
@@ -66,8 +67,7 @@ class FullPlayerScreen extends StatelessWidget {
                 )),
             if (provider.remainingSleepDuration != null)
               ListTile(
-                leading:
-                    const Icon(Icons.cancel, color: Colors.redAccent),
+                leading: const Icon(Icons.cancel, color: Colors.redAccent),
                 title: Text(
                   tCancel,
                   style: const TextStyle(color: Colors.redAccent),
@@ -89,16 +89,13 @@ class FullPlayerScreen extends StatelessWidget {
     final track = player.currentTrack;
     final theme = Theme.of(context);
 
-    // استخراج النصوص
     final tNoTrack = context.tr('player_no_track');
     final tPlayerTitle = context.tr('player_full_title');
     final tPointA = context.tr('player_point_a');
     final tPointB = context.tr('player_point_b');
 
     if (track == null) {
-      return Scaffold(
-        body: Center(child: Text(tNoTrack)),
-      );
+      return Scaffold(body: Center(child: Text(tNoTrack)));
     }
 
     return Scaffold(
@@ -114,11 +111,11 @@ class FullPlayerScreen extends StatelessWidget {
       ),
       body: SafeArea(
         child: Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           child: Column(
             children: [
               const Spacer(),
+              // ═══ غلاف كبير (Hero) ═══
               Hero(
                 tag: 'album_art_${track.id}',
                 child: ClipRRect(
@@ -126,18 +123,16 @@ class FullPlayerScreen extends StatelessWidget {
                   child: Container(
                     width: double.infinity,
                     constraints: const BoxConstraints(maxHeight: 320),
-                    color:
-                        theme.colorScheme.primary.withValues(alpha: 0.2),
-                    child: track.albumArtBytes != null
-                        ? Image.memory(
-                            track.albumArtBytes!,
-                            fit: BoxFit.cover,
-                          )
-                        : Icon(
-                            Icons.music_note,
-                            size: 100,
-                            color: theme.colorScheme.primary,
-                          ),
+                    color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                    child: AspectRatio(
+                      aspectRatio: 1,
+                      child: TrackArtwork(
+                        songId: track.id,
+                        size: 320,
+                        borderRadius: 24,
+                        fallbackIcon: Icons.music_note,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -157,36 +152,29 @@ class FullPlayerScreen extends StatelessWidget {
                 child: Text(
                   '${track.artist} • ${track.album}',
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color:
-                        theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                   maxLines: 1,
                 ),
               ),
               const SizedBox(height: 24),
-
-              // شريط التقدم
               StreamBuilder<Duration>(
                 stream: player.player.positionStream,
                 builder: (context, snapshot) {
                   final position = snapshot.data ?? Duration.zero;
-                  final total =
-                      player.player.duration ?? track.duration;
+                  final total = player.player.duration ?? track.duration;
                   return ProgressBar(
                     progress: position,
                     total: total,
                     progressBarColor: theme.colorScheme.primary,
-                    baseBarColor: theme.colorScheme.surface
-                        .withValues(alpha: 0.5),
+                    baseBarColor:
+                        theme.colorScheme.surface.withValues(alpha: 0.5),
                     thumbColor: theme.colorScheme.primary,
                     onSeek: (pos) => player.player.seek(pos),
                   );
                 },
               ),
-
               const SizedBox(height: 16),
-
-              // A-B Repeat
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -217,23 +205,18 @@ class FullPlayerScreen extends StatelessWidget {
                   ],
                 ],
               ),
-
               const Spacer(),
-
-              // أزرار التحكم
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Loop
                   IconButton(
                     icon: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           Icons.repeat,
-                          color: player.loopMode !=
-                                  CustomLoopMode.repeatAll &&
-                              player.loopMode != CustomLoopMode.none
+                          color: player.loopMode != CustomLoopMode.repeatAll &&
+                                  player.loopMode != CustomLoopMode.none
                               ? theme.colorScheme.primary
                               : null,
                         ),
@@ -245,14 +228,10 @@ class FullPlayerScreen extends StatelessWidget {
                     ),
                     onPressed: player.toggleLoopMode,
                   ),
-
-                  // Previous
                   IconButton(
                     icon: const Icon(Icons.skip_previous_rounded, size: 36),
                     onPressed: player.playPrevious,
                   ),
-
-                  // Play/Pause
                   IconButton(
                     icon: Icon(
                       player.player.playing
@@ -263,14 +242,10 @@ class FullPlayerScreen extends StatelessWidget {
                     ),
                     onPressed: player.togglePlayPause,
                   ),
-
-                  // Next
                   IconButton(
                     icon: const Icon(Icons.skip_next_rounded, size: 36),
                     onPressed: player.playNext,
                   ),
-
-                  // Speed
                   PopupMenuButton<double>(
                     initialValue: player.speed,
                     onSelected: player.setPlaybackSpeed,

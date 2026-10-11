@@ -7,6 +7,8 @@ import '../../core/services/media_cache.dart';
 import '../../core/services/media_scanner.dart';
 import '../../models/audio_track.dart';
 import '../../providers/player_provider.dart';
+import '../../widgets/playing_indicator.dart';
+import '../../widgets/track_artwork.dart';
 
 class AudioScreen extends StatefulWidget {
   const AudioScreen({super.key});
@@ -45,13 +47,11 @@ class _AudioScreenState extends State<AudioScreen>
   }
 
   Future<void> _bootstrap() async {
-    // 1. الكاش فورًا
     final cached = await MediaCache.loadAudio();
     if (mounted && cached.isNotEmpty) {
       setState(() => _tracks = cached);
     }
 
-    // 2. افحص فقط إن كان الكاش قديمًا أو فارغًا
     final stale = await MediaCache.isAudioStale();
     if (!stale && cached.isNotEmpty) return;
 
@@ -135,22 +135,53 @@ class _AudioScreenState extends State<AudioScreen>
 
     return ListView.builder(
       itemCount: list.length,
-      itemExtent: 68,
+      itemExtent: 72,
       itemBuilder: (context, i) {
         final t = list[i];
-        final isPlaying = player.currentTrack?.id == t.id;
+        final isPlaying = player.currentTrack?.id == t.id &&
+            player.player.playing;
+        final isCurrent = player.currentTrack?.id == t.id;
         final isFav = _favoritePaths.contains(t.path);
+        final theme = Theme.of(context);
 
         return ListTile(
-          leading: CircleAvatar(
-            backgroundColor:
-                Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
-            child: Icon(
-              isPlaying ? Icons.equalizer_rounded : Icons.music_note,
-              color: Theme.of(context).colorScheme.primary,
+          leading: Stack(
+            children: [
+              TrackArtwork(
+                songId: t.id,
+                size: 52,
+                borderRadius: 8,
+                fallbackIcon: isCurrent
+                    ? Icons.equalizer_rounded
+                    : Icons.music_note,
+              ),
+              // 🎵 مؤشر التشغيل يظهر على الصورة عند التشغيل
+              if (isPlaying)
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    alignment: Alignment.center,
+                    child: PlayingIndicator(
+                      color: theme.colorScheme.primary,
+                      dotSize: 3,
+                      height: 18,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          title: Text(
+            t.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: isCurrent ? theme.colorScheme.primary : null,
+              fontWeight: isCurrent ? FontWeight.w600 : null,
             ),
           ),
-          title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(
             '${t.artist} • ${t.album}',
             maxLines: 1,
@@ -233,12 +264,36 @@ class _FolderTracksScreen extends StatelessWidget {
       appBar: AppBar(title: Text(folderName)),
       body: ListView.builder(
         itemCount: tracks.length,
-        itemExtent: 68,
+        itemExtent: 72,
         itemBuilder: (context, i) {
           final t = tracks[i];
+          final isPlaying = player.currentTrack?.id == t.id &&
+              player.player.playing;
+          final theme = Theme.of(context);
+
           return ListTile(
-            leading: const Icon(Icons.music_note),
-            title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            leading: Stack(
+              children: [
+                TrackArtwork(songId: t.id, size: 52),
+                if (isPlaying)
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      alignment: Alignment.center,
+                      child: PlayingIndicator(
+                        color: theme.colorScheme.primary,
+                        dotSize: 3,
+                        height: 18,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            title:
+                Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: Text(t.artist, maxLines: 1),
             onTap: () => player.setPlaylist(tracks, startIndex: i),
           );

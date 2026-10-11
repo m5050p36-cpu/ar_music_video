@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/services/media_cache.dart';
 import '../../core/services/media_scanner.dart';
+import '../../core/services/video_favorites_service.dart';
 import '../../models/video_item.dart';
 import 'video_player_screen.dart';
 
@@ -19,6 +20,7 @@ class _VideoScreenState extends State<VideoScreen>
     with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   late TabController _tabController;
   List<VideoItem> _videos = [];
+  List<String> _favoritePaths = [];
   bool _isScanning = false;
   bool _isGridView = true;
 
@@ -28,7 +30,8 @@ class _VideoScreenState extends State<VideoScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
+    _loadFavorites();
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
   }
 
@@ -38,19 +41,20 @@ class _VideoScreenState extends State<VideoScreen>
     super.dispose();
   }
 
-  /// 1. اعرض الكاش فورًا  2. افحص في الخلفية
+  Future<void> _loadFavorites() async {
+    final favs = await VideoFavoritesService.getFavorites();
+    if (mounted) setState(() => _favoritePaths = favs);
+  }
+
   Future<void> _bootstrap() async {
-    // تحميل الكاش أولًا (فوري)
     final cached = await MediaCache.loadVideos();
     if (mounted && cached.isNotEmpty) {
       setState(() => _videos = cached);
     }
 
-    // هل نحتاج إعادة الفحص؟
     final stale = await MediaCache.isVideoStale();
     if (!stale && cached.isNotEmpty) return;
 
-    // افحص في الخلفية
     await _backgroundScan();
   }
 
@@ -94,6 +98,7 @@ class _VideoScreenState extends State<VideoScreen>
     final tLibrary = context.tr('video_library');
     final tAll = context.tr('video_all');
     final tAlbums = context.tr('video_albums');
+    final tFav = context.tr('video_favorites');
     final tEmpty = context.tr('video_empty');
     final tRefresh = context.tr('audio_refresh');
     final tGridView = context.tr('video_grid_view');
@@ -122,6 +127,7 @@ class _VideoScreenState extends State<VideoScreen>
           tabs: [
             Tab(text: tAll),
             Tab(text: tAlbums),
+            Tab(text: tFav),
           ],
         ),
       ),
@@ -132,13 +138,13 @@ class _VideoScreenState extends State<VideoScreen>
               children: [
                 _buildAllVideosTab(tEmpty),
                 _buildAlbumsTab(tAlbums),
+                _buildFavoritesTab(tEmpty),
               ],
             ),
     );
   }
 
   Widget _buildThumbnail(VideoItem v) {
-    // 1. من الملف المحفوظ — الأسرع
     if (v.thumbnailPath != null) {
       final f = File(v.thumbnailPath!);
       if (f.existsSync()) {
@@ -188,6 +194,7 @@ class _VideoScreenState extends State<VideoScreen>
         itemCount: _videos.length,
         itemBuilder: (context, i) {
           final v = _videos[i];
+          final isFav = _favoritePaths.contains(v.path);
           return GestureDetector(
             onTap: () => _openPlayer(v),
             child: ClipRRect(
@@ -196,6 +203,7 @@ class _VideoScreenState extends State<VideoScreen>
                 fit: StackFit.expand,
                 children: [
                   _buildThumbnail(v),
+                  // شارة المدة
                   if (v.duration.inSeconds > 0)
                     Positioned(
                       top: 6,
@@ -219,6 +227,35 @@ class _VideoScreenState extends State<VideoScreen>
                         ),
                       ),
                     ),
+                  // زر المفضلة
+                  Positioned(
+                    top: 4,
+                    left: 4,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: () async {
+                          await VideoFavoritesService.toggleFavorite(v.path);
+                          _loadFavorites();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            isFav ? Icons.favorite : Icons.favorite_border,
+                            color:
+                                isFav ? Colors.redAccent : Colors.white,
+                            size: 18,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // اسم الفيديو
                   Positioned(
                     bottom: 0,
                     left: 0,
@@ -257,6 +294,7 @@ class _VideoScreenState extends State<VideoScreen>
       itemExtent: 72,
       itemBuilder: (context, i) {
         final v = _videos[i];
+        final isFav = _favoritePaths.contains(v.path);
         return ListTile(
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -273,7 +311,71 @@ class _VideoScreenState extends State<VideoScreen>
             '${v.folderName} • ${_formatDuration(v.duration)}',
             maxLines: 1,
           ),
-          trailing: const Icon(Icons.play_circle_fill_rounded),
+          trailing: IconButton(
+            icon: Icon(
+              isFav ? Icons.favorite : Icons.favorite_border,
+              color: isFav ? Colors.redAccent : null,
+            ),
+            onPressed: () async {
+              await VideoFavoritesService.toggleFavorite(v.path);
+              _loadFavorites();
+            },
+          ),
+          onTap: () => _openPlayer(v),
+        );
+      },
+    );
+  }
+
+  Widget _buildFavoritesTab(String emptyText) {
+    final favs = _videos
+        .where((v) => _favoritePaths.contains(v.path))
+        .toList();
+
+    if (favs.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.favorite_border, size: 64),
+              const SizedBox(height: 12),
+              Text(emptyText, textAlign: TextAlign.center),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: favs.length,
+      itemExtent: 72,
+      itemBuilder: (context, i) {
+        final v = favs[i];
+        return ListTile(
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          leading: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 72,
+              height: 54,
+              child: _buildThumbnail(v),
+            ),
+          ),
+          title: Text(v.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+            '${v.folderName} • ${_formatDuration(v.duration)}',
+            maxLines: 1,
+          ),
+          trailing: IconButton(
+            icon: const Icon(Icons.favorite, color: Colors.redAccent),
+            onPressed: () async {
+              await VideoFavoritesService.toggleFavorite(v.path);
+              _loadFavorites();
+            },
+          ),
           onTap: () => _openPlayer(v),
         );
       },

@@ -46,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(_onTabChanged);
     _loadCachedBannersFirst();
     _loadBanners();
   }
@@ -53,8 +54,14 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _onTabChanged() {
+    // أعِد البناء لتحديث الشريط السفلي (يُستدعى عند بدء الحركة)
+    if (mounted) setState(() {});
   }
 
   @override
@@ -125,20 +132,17 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _openBannerLink(String? url) async {
     if (url == null || url.trim().isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final errorText = context.tr('common_error');
     try {
       final uri = Uri.parse(url.trim());
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr('common_error'))),
-        );
+      } else {
+        messenger.showSnackBar(SnackBar(content: Text(errorText)));
       }
     } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr('common_error'))),
-      );
+      messenger.showSnackBar(SnackBar(content: Text(errorText)));
     }
   }
 
@@ -150,7 +154,6 @@ class _HomeScreenState extends State<HomeScreen>
     final themeProvider = Provider.of<ThemeProvider>(context);
     final langProvider = Provider.of<LanguageProvider>(context);
 
-    // نُخزّن النصوص في متغيرات — يمنع مشكلة `const` مع `context.tr()`
     final tAudio = context.tr('tab_audio');
     final tVideos = context.tr('tab_videos');
     final tAdminPanel = context.tr('drawer_admin_panel');
@@ -163,10 +166,10 @@ class _HomeScreenState extends State<HomeScreen>
     final tOffline = context.tr('drawer_offline');
     final tAppName = context.tr('app_name');
 
-    // 📐 نسبة البنر 16:9 — محسوبة من عرض الشاشة
+    // 📐 البنر بنسبة 16:9
     final screenWidth = MediaQuery.sizeOf(context).width;
-    final bannerHeight = (screenWidth * 9.0 / 16.0).round(); // int
-    final expandedHeight = bannerHeight + kToolbarHeight + 48.0;
+    final bannerHeight = (screenWidth * 9.0 / 16.0).round();
+    final expandedHeight = bannerHeight + kToolbarHeight;
 
     return Scaffold(
       drawer: _buildDrawer(
@@ -236,27 +239,15 @@ class _HomeScreenState extends State<HomeScreen>
                 collapseMode: CollapseMode.pin,
                 background: _banners.isEmpty
                     ? Container(
-                        color:
-                            Theme.of(context).colorScheme.surfaceContainerHighest,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest,
                       )
                     : _BannerPager(
                         banners: _banners,
                         baseHeight: bannerHeight,
                         onTap: (url) => _openBannerLink(url),
                       ),
-              ),
-              bottom: TabBar(
-                controller: _tabController,
-                tabs: [
-                  Tab(
-                    icon: const Icon(Icons.audiotrack),
-                    text: tAudio,
-                  ),
-                  Tab(
-                    icon: const Icon(Icons.video_library),
-                    text: tVideos,
-                  ),
-                ],
               ),
             ),
           ];
@@ -271,6 +262,103 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             const MiniPlayer(),
           ],
+        ),
+      ),
+      bottomNavigationBar: _buildBottomBar(tAudio, tVideos),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // الشريط السفلي:  [🎵 الموسيقى]   [AR]   [🎬 الفيديوهات]
+  // ═══════════════════════════════════════════════════════════════
+  Widget _buildBottomBar(String tAudio, String tVideos) {
+    final theme = Theme.of(context);
+    final currentIndex = _tabController.index;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 12,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 62,
+          child: Row(
+            children: [
+              // ─── زر الموسيقى ───
+              Expanded(
+                child: _BottomBarItem(
+                  icon: Icons.music_note_rounded,
+                  label: tAudio,
+                  isActive: currentIndex == 0,
+                  onTap: () {
+                    _tabController.animateTo(0);
+                    setState(() {});
+                  },
+                ),
+              ),
+
+              // ─── شعار AR في الوسط ───
+              _buildCenterBrand(theme),
+
+              // ─── زر الفيديوهات ───
+              Expanded(
+                child: _BottomBarItem(
+                  icon: Icons.video_library_rounded,
+                  label: tVideos,
+                  isActive: currentIndex == 1,
+                  onTap: () {
+                    _tabController.animateTo(1);
+                    setState(() {});
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCenterBrand(ThemeData theme) {
+    return Container(
+      width: 52,
+      height: 52,
+      margin: const EdgeInsets.symmetric(horizontal: 6),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            theme.colorScheme.primary,
+            theme.colorScheme.secondary,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: theme.colorScheme.primary.withValues(alpha: 0.45),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Text(
+          'AR',
+          style: TextStyle(
+            color: theme.colorScheme.onPrimary,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+            letterSpacing: 0.5,
+          ),
         ),
       ),
     );
@@ -294,13 +382,10 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           UserAccountsDrawerHeader(
             accountName: Text(
-              auth.profile?['full_name'] ??
-                  (auth.isGuest ? tGuest : tUser),
+              auth.profile?['full_name'] ?? (auth.isGuest ? tGuest : tUser),
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            accountEmail: Text(
-              auth.currentUser?.email ?? tOffline,
-            ),
+            accountEmail: Text(auth.currentUser?.email ?? tOffline),
             currentAccountPicture: _buildAvatar(auth),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.primary,
@@ -402,6 +487,56 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// زر الشريط السفلي
+// ═══════════════════════════════════════════════════════════════
+class _BottomBarItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _BottomBarItem({
+    required this.icon,
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = isActive
+        ? theme.colorScheme.primary
+        : theme.colorScheme.onSurface.withValues(alpha: 0.55);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: 26),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// _BannerPager (كما هو)
+// ═══════════════════════════════════════════════════════════════
 class _BannerPager extends StatefulWidget {
   final List<Map<String, dynamic>> banners;
   final int baseHeight;

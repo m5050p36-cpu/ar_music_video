@@ -52,6 +52,7 @@ class AppStrings {
     // Video
     'video_library': 'مكتبة الفيديوهات',
     'video_all': 'جميع الفيديوهات',
+    'video_favorites': 'المفضلة',
     'video_albums': 'الألبومات',
     'video_scanning': 'جاري فحص فيديوهات الجهاز...',
     'video_empty': 'لا توجد فيديوهات في الجهاز.',
@@ -236,6 +237,7 @@ class AppStrings {
 
     'video_library': 'Video Library',
     'video_all': 'All Videos',
+    'video_favorites': 'Favorites',
     'video_albums': 'Albums',
     'video_scanning': 'Scanning videos...',
     'video_empty': 'No videos found on your device.',

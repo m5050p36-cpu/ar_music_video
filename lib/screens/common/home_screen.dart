@@ -163,11 +163,10 @@ class _HomeScreenState extends State<HomeScreen>
     final tOffline = context.tr('drawer_offline');
     final tAppName = context.tr('app_name');
 
-    final bannerHeight = _banners.isNotEmpty
-        ? (((_banners.first['height'] as num?)?.toInt() ?? 145).clamp(100, 400))
-        : 145;
-    final expandedHeight =
-        bannerHeight.toDouble() + kToolbarHeight + 48.0;
+    // 📐 نسبة البنر 16:9 — محسوبة من عرض الشاشة
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final bannerHeight = (screenWidth * 9.0 / 16.0).round(); // int
+    final expandedHeight = bannerHeight + kToolbarHeight + 48.0;
 
     return Scaffold(
       drawer: _buildDrawer(

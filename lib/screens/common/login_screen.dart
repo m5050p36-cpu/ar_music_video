@@ -22,6 +22,12 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   String? _errorMessage;
 
+  /// ═══════════════════════════════════════════════════════════════
+  /// بوت الدعم الفني على Telegram (نسيت كلمة المرور)
+  /// ═══════════════════════════════════════════════════════════════
+  static const String _telegramBotUrl = 'https://t.me/Ra16bot';
+  static const String _telegramAppUri = 'tg://resolve?domain=Ra16bot';
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -67,24 +73,41 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } else {
       setState(() {
-        _errorMessage = auth.lastError ??
-            (_isSignUp
-                ? context.tr('common_failed')
-                : context.tr('common_failed'));
+        _errorMessage = auth.lastError ?? context.tr('common_failed');
       });
     }
   }
 
+  /// ═══════════════════════════════════════════════════════════════
+  /// يفتح بوت Telegram — محمي ضد async gaps
+  /// ═══════════════════════════════════════════════════════════════
   Future<void> _openTelegramBot() async {
-    final uri = Uri.parse('https://t.me/YourAppSupportBot');
+    // احفظ النصوص والمُنشئ قبل أي await
+    final messenger = ScaffoldMessenger.of(context);
+    final errorText = context.tr('common_error');
+
     try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      // 1. حاول فتح تطبيق Telegram مباشرة
+      final appUri = Uri.parse(_telegramAppUri);
+      if (await canLaunchUrl(appUri)) {
+        await launchUrl(appUri, mode: LaunchMode.externalApplication);
+        return;
       }
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr('common_error'))),
+
+      // 2. fallback — افتح في المتصفح
+      final webUri = Uri.parse(_telegramBotUrl);
+      if (await canLaunchUrl(webUri)) {
+        await launchUrl(webUri, mode: LaunchMode.externalApplication);
+        return;
+      }
+
+      // 3. فشل الاثنان — أعرض رسالة
+      messenger.showSnackBar(
+        SnackBar(content: Text(errorText)),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('$errorText: $e')),
       );
     }
   }
@@ -93,7 +116,6 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // استخراج النصوص — يمنع مشكلة `const` مع `context.tr()`
     final tTitle = _isSignUp
         ? context.tr('signup_title')
         : context.tr('login_title');
@@ -237,6 +259,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       onPressed: _openTelegramBot,
                       icon: const Icon(Icons.send_rounded, size: 16),
                       label: Text(tForgot),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFF29B6F6),
+                      ),
                     ),
                   ),
 

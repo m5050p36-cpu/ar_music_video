@@ -6,10 +6,12 @@ class VideoItem {
   final String path;
   final String folderName;
   final Duration duration;
+
+  /// مسار الصورة المصغرة المحفوظة على الجهاز
   final String? thumbnailPath;
 
-  /// مرجع مباشر للـ AssetEntity — يُستخدم لتوليد الصورة المصغرة بكفاءة
-  /// عبر MediaStore دون قراءة الملف كاملاً.
+  /// مرجع مباشر للـ AssetEntity — متاح فقط في نفس جلسة الفحص
+  /// عند التحميل من الكاش يكون null
   final AssetEntity? asset;
 
   VideoItem({
@@ -21,4 +23,25 @@ class VideoItem {
     this.thumbnailPath,
     this.asset,
   });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'path': path,
+        'folderName': folderName,
+        'durationMs': duration.inMilliseconds,
+        'thumbnailPath': thumbnailPath,
+      };
+
+  factory VideoItem.fromJson(Map<String, dynamic> json) {
+    return VideoItem(
+      id: (json['id'] ?? '').toString(),
+      title: (json['title'] ?? '').toString(),
+      path: (json['path'] ?? '').toString(),
+      folderName: (json['folderName'] ?? 'فيديوهات').toString(),
+      duration: Duration(milliseconds: (json['durationMs'] ?? 0) as int),
+      thumbnailPath: json['thumbnailPath'] as String?,
+      asset: null,
+    );
+  }
 }

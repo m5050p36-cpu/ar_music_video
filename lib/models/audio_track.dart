@@ -34,12 +34,18 @@ class AudioTrack {
   }
 
   Map<String, dynamic> toMap() => {
-    'id': id,
-    'title': title,
-    'artist': artist,
-    'album': album,
-    'path': path,
-    'durationMs': duration.inMilliseconds,
-    'albumArtUri': albumArtUri,
-  };
+        'id': id,
+        'title': title,
+        'artist': artist,
+        'album': album,
+        'path': path,
+        'durationMs': duration.inMilliseconds,
+        'albumArtUri': albumArtUri,
+      };
+
+  // JSON للتخزين الدائم (يتجاهل الصورة الثنائية)
+  Map<String, dynamic> toJson() => toMap();
+
+  factory AudioTrack.fromJson(Map<String, dynamic> json) =>
+      AudioTrack.fromMap(json);
 }

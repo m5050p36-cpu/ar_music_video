@@ -16,7 +16,6 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   bool _navigated = false;
-  bool _permissionsRequested = false;
 
   @override
   void initState() {
@@ -25,53 +24,49 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _startup() async {
-    // 1. اطلب الصلاحيات مرة واحدة فقط (أول تشغيل)
-    if (!_permissionsRequested && mounted) {
-      _permissionsRequested = true;
-      final prefs = await SharedPreferences.getInstance();
-      final alreadyAsked = prefs.getBool('permissions_asked_v1') ?? false;
-      if (!alreadyAsked && mounted) {
-        await PermissionService.requestAll(context);
-        await prefs.setBool('permissions_asked_v1', true);
-      }
+    // ─── 1. ابدأ طلب الصلاحيات في الخلفية — لا يوقف التنقل ───
+    _requestPermissionsInBackground();
+
+    // ─── 2. انتظر AuthStatus يخرج من unknown — بحد أقصى 1.2 ثانية ───
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    var waited = 0;
+    while (auth.status == AuthStatus.unknown && waited < 12) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      waited++;
+      if (!mounted) return;
     }
 
-    // 2. انتظر AuthProvider يخرج من unknown
     if (!mounted) return;
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    auth.addListener(_checkAndNavigate);
-    _checkAndNavigate();
+    _navigate(auth.status);
   }
 
-  void _checkAndNavigate() {
-    if (_navigated || !mounted) return;
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-
-    if (auth.status == AuthStatus.unknown) return;
-
-    _navigated = true;
-    auth.removeListener(_checkAndNavigate);
-
-    final destination = (auth.status == AuthStatus.authenticated ||
-            auth.status == AuthStatus.guest)
-        ? const HomeScreen()
-        : const LoginScreen();
-
-    Future.delayed(const Duration(milliseconds: 400), () {
+  void _requestPermissionsInBackground() {
+    // نستخدم delay بسيط لتفادي منع UI
+    Future.delayed(const Duration(milliseconds: 300), () async {
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => destination),
-      );
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final asked = prefs.getBool('permissions_asked_v1') ?? false;
+        if (asked) return;
+        if (!mounted) return;
+        await PermissionService.requestAll(context);
+        await prefs.setBool('permissions_asked_v1', true);
+      } catch (_) {}
     });
   }
 
-  @override
-  void dispose() {
-    try {
-      Provider.of<AuthProvider>(context, listen: false)
-          .removeListener(_checkAndNavigate);
-    } catch (_) {}
-    super.dispose();
+  void _navigate(AuthStatus status) {
+    if (_navigated || !mounted) return;
+    _navigated = true;
+
+    final destination = (status == AuthStatus.authenticated ||
+            status == AuthStatus.guest)
+        ? const HomeScreen()
+        : const LoginScreen();
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => destination),
+    );
   }
 
   @override
@@ -100,13 +95,6 @@ class _SplashScreenState extends State<SplashScreen> {
               style: theme.textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1.1,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'مشغل الوسائط الاحترافي المتكامل',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
               ),
             ),
             const SizedBox(height: 36),

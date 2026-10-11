@@ -1,4 +1,8 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:on_audio_query/on_audio_query.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import '../../models/audio_track.dart';
@@ -8,6 +12,19 @@ class MediaScanner {
   MediaScanner._();
 
   static final OnAudioQuery _audioQuery = OnAudioQuery();
+  static Directory? _thumbDir;
+
+  /// مجلد حفظ الصور المصغرة (دائم)
+  static Future<Directory> _getThumbDir() async {
+    if (_thumbDir != null && _thumbDir!.existsSync()) return _thumbDir!;
+    final appDir = await getApplicationSupportDirectory();
+    final dir = Directory('${appDir.path}/video_thumbs');
+    if (!dir.existsSync()) await dir.create(recursive: true);
+    _thumbDir = dir;
+    return dir;
+  }
+
+  // ═══════════════════════ Audio ═══════════════════════
 
   static Future<List<AudioTrack>> scanAudio() async {
     try {
@@ -46,22 +63,12 @@ class MediaScanner {
       }
       return tracks;
     } catch (e) {
+      debugPrint('scanAudio error: $e');
       return [];
     }
   }
 
-  static Future<List<int>?> getAlbumArt(int songId) async {
-    try {
-      return await _audioQuery.queryArtwork(
-        songId,
-        ArtworkType.AUDIO,
-        format: ArtworkFormat.JPEG,
-        size: 400,
-      );
-    } catch (_) {
-      return null;
-    }
-  }
+  // ═══════════════════════ Video ═══════════════════════
 
   static Future<List<VideoItem>> scanVideos() async {
     try {
@@ -90,7 +97,8 @@ class MediaScanner {
       if (albums.isEmpty) return [];
 
       final allVideos = albums.first;
-      final assets = await allVideos.getAssetListRange(start: 0, end: 1000);
+      final assets = await allVideos.getAssetListRange(start: 0, end: 2000);
+      final thumbDir = await _getThumbDir();
 
       final items = <VideoItem>[];
       for (final a in assets) {
@@ -107,6 +115,9 @@ class MediaScanner {
             ? rawPath.split('/').first
             : 'فيديوهات';
 
+        // توليد الصورة المصغرة مرة واحدة فقط — تُحفظ دائمًا
+        final thumbPath = await _ensureThumbnail(a, thumbDir);
+
         items.add(
           VideoItem(
             id: a.id,
@@ -114,14 +125,39 @@ class MediaScanner {
             path: file.path,
             folderName: folder,
             duration: Duration(seconds: a.duration),
-            thumbnailPath: null,
-            asset: a, // ← نمرر AssetEntity لاستخدامه في الواجهة
+            thumbnailPath: thumbPath,
+            asset: a,
           ),
         );
       }
       return items;
     } catch (e) {
+      debugPrint('scanVideos error: $e');
       return [];
+    }
+  }
+
+  /// يولّد الصورة المصغرة إن لم تكن موجودة — وإلا يعيد المسار المحفوظ
+  static Future<String?> _ensureThumbnail(
+    AssetEntity asset,
+    Directory thumbDir,
+  ) async {
+    try {
+      final file = File('${thumbDir.path}/${asset.id}.jpg');
+      if (file.existsSync() && file.lengthSync() > 0) {
+        return file.path;
+      }
+
+      final bytes = await asset.thumbnailDataWithSize(
+        const ThumbnailSize(400, 400),
+        quality: 80,
+      );
+      if (bytes == null) return null;
+      await file.writeAsBytes(bytes);
+      return file.path;
+    } catch (e) {
+      debugPrint('thumbnail error for ${asset.id}: $e');
+      return null;
     }
   }
 

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/localization/app_strings.dart';
 import '../../core/services/favorites_service.dart';
+import '../../core/services/media_cache.dart';
 import '../../core/services/media_scanner.dart';
 import '../../models/audio_track.dart';
 import '../../providers/player_provider.dart';
@@ -19,7 +20,6 @@ class _AudioScreenState extends State<AudioScreen>
   late TabController _tabController;
   List<AudioTrack> _tracks = [];
   bool _isScanning = false;
-  bool _hasScanned = false;
   List<String> _favoritePaths = [];
 
   @override
@@ -30,7 +30,7 @@ class _AudioScreenState extends State<AudioScreen>
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _loadFavorites();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _autoScan());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
   }
 
   @override
@@ -44,16 +44,42 @@ class _AudioScreenState extends State<AudioScreen>
     if (mounted) setState(() => _favoritePaths = favs);
   }
 
-  Future<void> _autoScan() async {
-    if (_hasScanned || _isScanning) return;
+  Future<void> _bootstrap() async {
+    // 1. الكاش فورًا
+    final cached = await MediaCache.loadAudio();
+    if (mounted && cached.isNotEmpty) {
+      setState(() => _tracks = cached);
+    }
+
+    // 2. افحص فقط إن كان الكاش قديمًا أو فارغًا
+    final stale = await MediaCache.isAudioStale();
+    if (!stale && cached.isNotEmpty) return;
+
+    await _backgroundScan();
+  }
+
+  Future<void> _backgroundScan() async {
+    if (_isScanning) return;
     setState(() => _isScanning = true);
-    final tracks = await MediaScanner.scanAudio();
+
+    final fresh = await MediaScanner.scanAudio();
+
     if (!mounted) return;
-    setState(() {
-      _tracks = tracks;
-      _isScanning = false;
-      _hasScanned = true;
-    });
+    if (fresh.isNotEmpty) {
+      setState(() {
+        _tracks = fresh;
+        _isScanning = false;
+      });
+      await MediaCache.saveAudio(fresh);
+    } else {
+      setState(() => _isScanning = false);
+    }
+  }
+
+  Future<void> _forceRescan() async {
+    await MediaCache.clear();
+    setState(() => _tracks = []);
+    await _backgroundScan();
   }
 
   @override
@@ -69,10 +95,7 @@ class _AudioScreenState extends State<AudioScreen>
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: context.tr('audio_refresh'),
-            onPressed: () {
-              _hasScanned = false;
-              _autoScan();
-            },
+            onPressed: _forceRescan,
           ),
         ],
         bottom: TabBar(
@@ -84,17 +107,8 @@ class _AudioScreenState extends State<AudioScreen>
           ],
         ),
       ),
-      body: _isScanning
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(),
-                  const SizedBox(height: 12),
-                  Text(context.tr('audio_scanning')),
-                ],
-              ),
-            )
+      body: _tracks.isEmpty && _isScanning
+          ? const Center(child: CircularProgressIndicator())
           : TabBarView(
               controller: _tabController,
               children: [

@@ -1,8 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:photo_manager/photo_manager.dart';
-import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 
 import '../../core/localization/app_strings.dart';
+import '../../core/services/media_cache.dart';
 import '../../core/services/media_scanner.dart';
 import '../../models/video_item.dart';
 import 'video_player_screen.dart';
@@ -19,7 +20,6 @@ class _VideoScreenState extends State<VideoScreen>
   late TabController _tabController;
   List<VideoItem> _videos = [];
   bool _isScanning = false;
-  bool _hasScanned = false;
   bool _isGridView = true;
 
   @override
@@ -29,7 +29,7 @@ class _VideoScreenState extends State<VideoScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _autoScan());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
   }
 
   @override
@@ -38,18 +38,44 @@ class _VideoScreenState extends State<VideoScreen>
     super.dispose();
   }
 
-  Future<void> _autoScan() async {
-    if (_hasScanned || _isScanning) return;
+  /// 1. اعرض الكاش فورًا  2. افحص في الخلفية
+  Future<void> _bootstrap() async {
+    // تحميل الكاش أولًا (فوري)
+    final cached = await MediaCache.loadVideos();
+    if (mounted && cached.isNotEmpty) {
+      setState(() => _videos = cached);
+    }
+
+    // هل نحتاج إعادة الفحص؟
+    final stale = await MediaCache.isVideoStale();
+    if (!stale && cached.isNotEmpty) return;
+
+    // افحص في الخلفية
+    await _backgroundScan();
+  }
+
+  Future<void> _backgroundScan() async {
+    if (_isScanning) return;
     setState(() => _isScanning = true);
 
-    final videos = await MediaScanner.scanVideos();
+    final fresh = await MediaScanner.scanVideos();
 
     if (!mounted) return;
-    setState(() {
-      _videos = videos;
-      _isScanning = false;
-      _hasScanned = true;
-    });
+    if (fresh.isNotEmpty) {
+      setState(() {
+        _videos = fresh;
+        _isScanning = false;
+      });
+      await MediaCache.saveVideos(fresh);
+    } else {
+      setState(() => _isScanning = false);
+    }
+  }
+
+  Future<void> _forceRescan() async {
+    await MediaCache.clear();
+    setState(() => _videos = []);
+    await _backgroundScan();
   }
 
   void _openPlayer(VideoItem v) {
@@ -65,11 +91,9 @@ class _VideoScreenState extends State<VideoScreen>
   Widget build(BuildContext context) {
     super.build(context);
 
-    // استخراج النصوص
     final tLibrary = context.tr('video_library');
     final tAll = context.tr('video_all');
     final tAlbums = context.tr('video_albums');
-    final tScanning = context.tr('video_scanning');
     final tEmpty = context.tr('video_empty');
     final tRefresh = context.tr('audio_refresh');
     final tGridView = context.tr('video_grid_view');
@@ -90,10 +114,7 @@ class _VideoScreenState extends State<VideoScreen>
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: tRefresh,
-            onPressed: () {
-              _hasScanned = false;
-              _autoScan();
-            },
+            onPressed: _forceRescan,
           ),
         ],
         bottom: TabBar(
@@ -104,17 +125,8 @@ class _VideoScreenState extends State<VideoScreen>
           ],
         ),
       ),
-      body: _isScanning
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(),
-                  const SizedBox(height: 12),
-                  Text(tScanning),
-                ],
-              ),
-            )
+      body: _videos.isEmpty && _isScanning
+          ? const Center(child: CircularProgressIndicator())
           : TabBarView(
               controller: _tabController,
               children: [
@@ -126,15 +138,17 @@ class _VideoScreenState extends State<VideoScreen>
   }
 
   Widget _buildThumbnail(VideoItem v) {
-    if (v.asset != null) {
-      return AssetEntityImage(
-        v.asset!,
-        isOriginal: false,
-        thumbnailSize: const ThumbnailSize(400, 400),
-        fit: BoxFit.cover,
-        filterQuality: FilterQuality.medium,
-        errorBuilder: (_, __, ___) => _thumbnailFallback(),
-      );
+    // 1. من الملف المحفوظ — الأسرع
+    if (v.thumbnailPath != null) {
+      final f = File(v.thumbnailPath!);
+      if (f.existsSync()) {
+        return Image.file(
+          f,
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (_, __, ___) => _thumbnailFallback(),
+        );
+      }
     }
     return _thumbnailFallback();
   }
@@ -240,13 +254,12 @@ class _VideoScreenState extends State<VideoScreen>
 
     return ListView.builder(
       itemCount: _videos.length,
+      itemExtent: 72,
       itemBuilder: (context, i) {
         final v = _videos[i];
         return ListTile(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 4,
-          ),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           leading: ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: SizedBox(
@@ -277,7 +290,6 @@ class _VideoScreenState extends State<VideoScreen>
     }
     final entries = albums.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
-
     final tVideos = context.tr('video_videos');
 
     return ListView.builder(

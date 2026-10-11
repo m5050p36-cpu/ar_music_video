@@ -42,14 +42,18 @@ class AuthProvider extends ChangeNotifier {
         return;
       }
 
+      // انتظر Supabase بحد أقصى 800ms فقط
       var waited = 0;
-      while (!SupabaseService.isInitialized && waited < 50) {
+      while (!SupabaseService.isInitialized && waited < 8) {
         await Future.delayed(const Duration(milliseconds: 100));
         waited++;
       }
 
       if (!SupabaseService.isInitialized) {
+        // لا نُطيل الانتظار — ننتقل لشاشة الدخول فورًا
+        // (في الخلفية: إذا نجح Supabase ووُجدت جلسة، سيُحدَّث تلقائيًا)
         _setStatus(AuthStatus.unauthenticated);
+        _watchForLateInit();
         return;
       }
 
@@ -307,6 +311,27 @@ class AuthProvider extends ChangeNotifier {
     _profile = null;
     _lastError = null;
     _setStatus(AuthStatus.unauthenticated);
+  }
+
+  /// يراقب Supabase إن تأخر عن 800ms — عند الجهوزية يقرأ الجلسة
+  void _watchForLateInit() {
+    Future.delayed(const Duration(seconds: 2), () async {
+      if (_disposed) return;
+      if (!SupabaseService.isInitialized) return;
+
+      _authSub?.cancel();
+      _authSub = SupabaseService.client.auth.onAuthStateChange.listen(
+        _onAuthChange,
+        onError: (e) => debugPrint('auth stream error: $e'),
+      );
+
+      final session = SupabaseService.client.auth.currentSession;
+      if (session?.user != null) {
+        _currentUser = session!.user;
+        await _loadProfile();
+        _setStatus(AuthStatus.authenticated);
+      }
+    });
   }
 
   @override

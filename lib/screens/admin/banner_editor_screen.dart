@@ -166,7 +166,6 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
     final tTitleHint = context.tr('banner_title_hint');
     final tLinkLabel = context.tr('banner_link_label');
     final tOrderLabel = context.tr('banner_order_label');
-    final tHeightLabel = context.tr('banner_height');
     final tActive = context.tr('banner_active');
     final tActiveSub = context.tr('banner_active_sub');
     final tAddBtn = context.tr('banner_add_button');
@@ -228,7 +227,7 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: Container(
-              height: _height.toDouble(),
+              height: MediaQuery.sizeOf(context).width * 9 / 16,
               width: double.infinity,
               color: theme.colorScheme.surfaceContainerHighest,
               child: _newImageFile != null
@@ -326,26 +325,6 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
           ),
 
           const SizedBox(height: 16),
-
-          Row(
-            children: [
-              const Icon(Icons.height, size: 20),
-              const SizedBox(width: 8),
-              Text('$tHeightLabel: $_height'),
-            ],
-          ),
-          Slider(
-            value: _height.toDouble(),
-            min: 100,
-            max: 400,
-            divisions: 30,
-            label: '$_height px',
-            onChanged: _isSaving
-                ? null
-                : (v) => setState(() => _height = v.round()),
-          ),
-
-          const SizedBox(height: 8),
 
           SwitchListTile(
             title: Text(tActive),

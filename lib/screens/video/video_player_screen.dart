@@ -647,6 +647,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     case 'aspect':
                       _cycleAspect();
                       break;
+                    case 'speed':
+                      _showSpeedDialog();
+                      break;
                     case 'share':
                       _shareVideo();
                       break;
@@ -676,10 +679,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       ],
                     ),
                   ),
-                  const PopupMenuItem(
-                    value: 'speed_menu',
-                    enabled: false,
-                    child: SizedBox.shrink(),
+                  PopupMenuItem(
+                    value: 'speed',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.speed, size: 20),
+                        const SizedBox(width: 10),
+                        Text('السرعة: ${_speed}x'),
+                      ],
+                    ),
                   ),
                   const PopupMenuItem(
                     value: 'share',
@@ -796,36 +804,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             ],
           ),
 
-          const SizedBox(height: 8),
-
-          // ═══ سرعة التشغيل ═══
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) {
-              final selected = (_speed - s).abs() < 0.01;
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 3),
-                child: ChoiceChip(
-                  label: Text(
-                    '${s}x',
-                    style: TextStyle(
-                      color: selected ? Colors.white : Colors.white70,
-                      fontSize: 12,
-                    ),
-                  ),
-                  selected: selected,
-                  selectedColor: Colors.indigoAccent,
-                  backgroundColor: Colors.white24,
-                  onSelected: (_) {
-                    setState(() => _speed = s);
-                    _controller.setPlaybackSpeed(s);
-                    _bumpControls();
-                  },
-                ),
-              );
-            }).toList(),
-          ),
-
           const Spacer(),
 
           // ═══ شريط التقدم ═══
@@ -858,6 +836,66 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showSpeedDialog() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.black87,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'سرعة التشغيل',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
+                    .map((s) {
+                  final selected = (_speed - s).abs() < 0.01;
+                  return ChoiceChip(
+                    label: Text(
+                      '${s}x',
+                      style: TextStyle(
+                        color:
+                            selected ? Colors.white : Colors.white70,
+                        fontWeight: selected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                    ),
+                    selected: selected,
+                    selectedColor: Colors.indigoAccent,
+                    backgroundColor: Colors.white24,
+                    onSelected: (_) {
+                      setState(() => _speed = s);
+                      _controller.setPlaybackSpeed(s);
+                      Navigator.pop(ctx);
+                      _bumpControls();
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
       ),
     );
   }

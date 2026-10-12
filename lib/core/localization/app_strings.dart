@@ -191,6 +191,17 @@ class AppStrings {
     'banner_refresh': 'تحديث',
 
     // Common
+    'common_options': 'خيارات',
+    'file_move': 'نقل',
+    'file_copy': 'نسخ',
+    'file_delete': 'مسح',
+    'file_moved': 'تم النقل',
+    'file_copied': 'تم النسخ',
+    'file_deleted': 'تم المسح',
+    'file_op_failed': 'فشلت العملية',
+    'file_delete_confirm_title': 'حذف الملف؟',
+    'file_delete_confirm_body': 'سيُحذف الملف نهائيًا من الجهاز. لا يمكن التراجع.',
+    'player_choose_speed': 'اختر السرعة',
     'common_close_sheet': 'إغلاق',
 
   };
@@ -367,6 +378,17 @@ class AppStrings {
     'banner_height_label': 'Height',
     'banner_refresh': 'Refresh',
 
+    'common_options': 'Options',
+    'file_move': 'Move',
+    'file_copy': 'Copy',
+    'file_delete': 'Delete',
+    'file_moved': 'Moved successfully',
+    'file_copied': 'Copied successfully',
+    'file_deleted': 'Deleted successfully',
+    'file_op_failed': 'Operation failed',
+    'file_delete_confirm_title': 'Delete file?',
+    'file_delete_confirm_body': 'The file will be permanently removed.',
+    'player_choose_speed': 'Choose speed',
     'common_close_sheet': 'Close',
 
   };

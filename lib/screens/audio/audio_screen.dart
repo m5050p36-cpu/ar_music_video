@@ -8,6 +8,7 @@ import '../../core/services/media_scanner.dart';
 import '../../models/audio_track.dart';
 import '../../providers/player_provider.dart';
 import '../../widgets/playing_indicator.dart';
+import '../../widgets/media_item_menu.dart';
 import '../../widgets/track_artwork.dart';
 
 class AudioScreen extends StatefulWidget {
@@ -187,15 +188,28 @@ class _AudioScreenState extends State<AudioScreen>
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          trailing: IconButton(
-            icon: Icon(
-              isFav ? Icons.favorite : Icons.favorite_border,
-              color: isFav ? Colors.redAccent : null,
-            ),
-            onPressed: () async {
-              await FavoritesService.toggleFavorite(t.path);
-              _loadFavorites();
-            },
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: Icon(
+                  isFav ? Icons.favorite : Icons.favorite_border,
+                  color: isFav ? Colors.redAccent : null,
+                ),
+                onPressed: () async {
+                  await FavoritesService.toggleFavorite(t.path);
+                  _loadFavorites();
+                },
+              ),
+              MediaItemMenu(
+                path: t.path,
+                isVideo: false,
+                songId: t.id,
+                onChanged: () {
+                  _forceRescan();
+                },
+              ),
+            ],
           ),
           onTap: () => player.setPlaylist(list, startIndex: i),
         );
@@ -295,6 +309,11 @@ class _FolderTracksScreen extends StatelessWidget {
             title:
                 Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: Text(t.artist, maxLines: 1),
+            trailing: MediaItemMenu(
+              path: t.path,
+              isVideo: false,
+              songId: t.id,
+            ),
             onTap: () => player.setPlaylist(tracks, startIndex: i),
           );
         },

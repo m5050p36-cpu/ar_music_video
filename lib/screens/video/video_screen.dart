@@ -7,6 +7,7 @@ import '../../core/services/media_cache.dart';
 import '../../core/services/media_scanner.dart';
 import '../../core/services/video_favorites_service.dart';
 import '../../models/video_item.dart';
+import '../../widgets/media_item_menu.dart';
 import 'video_player_screen.dart';
 
 class VideoScreen extends StatefulWidget {
@@ -263,6 +264,28 @@ class _VideoScreenState extends State<VideoScreen>
                       ),
                     ),
                   ),
+                  // زر الخيارات
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          shape: BoxShape.circle,
+                        ),
+                        child: MediaItemMenu(
+                          path: v.path,
+                          isVideo: true,
+                          assetId: v.id,
+                          onChanged: () {
+                            _forceRescan();
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
                   // اسم الفيديو
                   Positioned(
                     bottom: 0,
@@ -319,15 +342,28 @@ class _VideoScreenState extends State<VideoScreen>
             '${v.folderName} • ${_formatDuration(v.duration)}',
             maxLines: 1,
           ),
-          trailing: IconButton(
-            icon: Icon(
-              isFav ? Icons.favorite : Icons.favorite_border,
-              color: isFav ? Colors.redAccent : null,
-            ),
-            onPressed: () async {
-              await VideoFavoritesService.toggleFavorite(v.path);
-              _loadFavorites();
-            },
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: Icon(
+                  isFav ? Icons.favorite : Icons.favorite_border,
+                  color: isFav ? Colors.redAccent : null,
+                ),
+                onPressed: () async {
+                  await VideoFavoritesService.toggleFavorite(v.path);
+                  _loadFavorites();
+                },
+              ),
+              MediaItemMenu(
+                path: v.path,
+                isVideo: true,
+                assetId: v.id,
+                onChanged: () {
+                  _forceRescan();
+                },
+              ),
+            ],
           ),
           onTap: () => _openPlayer(v),
         );
@@ -377,12 +413,25 @@ class _VideoScreenState extends State<VideoScreen>
             '${v.folderName} • ${_formatDuration(v.duration)}',
             maxLines: 1,
           ),
-          trailing: IconButton(
-            icon: const Icon(Icons.favorite, color: Colors.redAccent),
-            onPressed: () async {
-              await VideoFavoritesService.toggleFavorite(v.path);
-              _loadFavorites();
-            },
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.favorite, color: Colors.redAccent),
+                onPressed: () async {
+                  await VideoFavoritesService.toggleFavorite(v.path);
+                  _loadFavorites();
+                },
+              ),
+              MediaItemMenu(
+                path: v.path,
+                isVideo: true,
+                assetId: v.id,
+                onChanged: () {
+                  _forceRescan();
+                },
+              ),
+            ],
           ),
           onTap: () => _openPlayer(v),
         );

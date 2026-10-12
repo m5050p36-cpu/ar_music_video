@@ -244,10 +244,25 @@ class _HomeScreenState extends State<HomeScreen>
                             .colorScheme
                             .surfaceContainerHighest,
                       )
-                    : _BannerPager(
-                        banners: _banners,
-                        baseHeight: bannerHeight,
-                        onTap: (url) => _openBannerLink(url),
+                    : LayoutBuilder(
+                        builder: (context, constraints) {
+                          final widthPercent = (_banners.first['width_percent']
+                                      as num?)
+                                  ?.toInt() ??
+                              100;
+                          final safePercent =
+                              widthPercent.clamp(50, 100) / 100.0;
+                          final hPad =
+                              (constraints.maxWidth * (1 - safePercent)) / 2;
+                          return Padding(
+                            padding: EdgeInsets.symmetric(horizontal: hPad),
+                            child: _BannerPager(
+                              banners: _banners,
+                              baseHeight: bannerHeight,
+                              onTap: (url) => _openBannerLink(url),
+                            ),
+                          );
+                        },
                       ),
               ),
             ),

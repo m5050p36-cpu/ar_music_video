@@ -139,15 +139,24 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(20),
+                  width: 130,
+                  height: 130,
+                  padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
+                    color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(28),
                   ),
-                  child: Icon(
-                    Icons.music_video_rounded,
-                    size: 56,
-                    color: theme.colorScheme.primary,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: Image.asset(
+                      'assets/images/ar_logo.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => Icon(
+                        Icons.music_video_rounded,
+                        size: 56,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),

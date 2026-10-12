@@ -30,6 +30,7 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
   File? _newImageFile;
   String? _existingImageUrl;
   int _height = 145;
+  int _widthPercent = 100;
   bool _isActive = true;
   bool _isSaving = false;
   String? _error;
@@ -45,6 +46,7 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
       _linkController.text = (e['target_url'] ?? '').toString();
       _orderController.text = (e['display_order'] ?? 1).toString();
       _height = (e['height'] as num?)?.toInt() ?? 145;
+      _widthPercent = (e['width_percent'] as num?)?.toInt() ?? 100;
       _isActive = e['is_active'] == true;
       _existingImageUrl = e['image_url'] as String?;
     } else {
@@ -62,10 +64,7 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final x = await _picker.pickImage(
-        source: source,
-        imageQuality: 90,
-      );
+      final x = await _picker.pickImage(source: source, imageQuality: 90);
       if (x == null) return;
       setState(() {
         _newImageFile = File(x.path);
@@ -85,8 +84,7 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
     try {
       String? finalImageUrl = _existingImageUrl;
       if (_newImageFile != null) {
-        final uploaded =
-            await AdminService.uploadBannerImage(_newImageFile!);
+        final uploaded = await AdminService.uploadBannerImage(_newImageFile!);
         if (uploaded == null) {
           if (!mounted) return;
           setState(() {
@@ -97,7 +95,6 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
         }
         finalImageUrl = uploaded;
       }
-
       if (finalImageUrl == null) {
         if (!mounted) return;
         setState(() {
@@ -119,6 +116,7 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
           displayOrder: order,
           height: _height,
           isActive: _isActive,
+          widthPercent: _widthPercent,
         );
       } else {
         ok = await AdminService.insertBanner(
@@ -128,6 +126,7 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
           displayOrder: order,
           height: _height,
           isActive: _isActive,
+          widthPercent: _widthPercent,
         );
       }
 
@@ -153,7 +152,6 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // استخراج النصوص
     final tTitle = _isEditing
         ? context.tr('banner_edit')
         : context.tr('banner_new');
@@ -166,11 +164,17 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
     final tTitleHint = context.tr('banner_title_hint');
     final tLinkLabel = context.tr('banner_link_label');
     final tOrderLabel = context.tr('banner_order_label');
+    final tHeightLabel = context.tr('banner_height');
     final tActive = context.tr('banner_active');
     final tActiveSub = context.tr('banner_active_sub');
     final tAddBtn = context.tr('banner_add_button');
     final tSaveBtn = context.tr('banner_save_button');
     final tCancel = context.tr('common_cancel');
+
+    // عرض المعاينة
+    final screenWidth = MediaQuery.sizeOf(context).width - 32;
+    final previewWidth = screenWidth * _widthPercent / 100.0;
+    final previewHeight = previewWidth * 9.0 / 16.0;
 
     return Scaffold(
       appBar: AppBar(
@@ -224,21 +228,26 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
                 ?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              height: MediaQuery.sizeOf(context).width * 9 / 16,
-              width: double.infinity,
-              color: theme.colorScheme.surfaceContainerHighest,
+
+          // ═══ معاينة حيّة ═══
+          Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: previewWidth,
+              height: previewHeight,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              clipBehavior: Clip.antiAlias,
               child: _newImageFile != null
                   ? Image.file(_newImageFile!, fit: BoxFit.cover)
                   : (_existingImageUrl != null
                       ? CachedNetworkImage(
                           imageUrl: _existingImageUrl!,
                           fit: BoxFit.cover,
-                          placeholder: (_, __) => const Center(
-                            child: CircularProgressIndicator(),
-                          ),
+                          placeholder: (_, __) =>
+                              const Center(child: CircularProgressIndicator()),
                         )
                       : Center(
                           child: Column(
@@ -246,17 +255,19 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
                             children: [
                               Icon(
                                 Icons.add_photo_alternate_outlined,
-                                size: 48,
+                                size: 40,
                                 color: theme.colorScheme.primary,
                               ),
                               const SizedBox(height: 8),
-                              Text(tNoImage),
+                              Text(tNoImage,
+                                  style: const TextStyle(fontSize: 12)),
                             ],
                           ),
                         )),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
+
           Row(
             children: [
               Expanded(
@@ -271,9 +282,8 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: _isSaving
-                      ? null
-                      : () => _pickImage(ImageSource.camera),
+                  onPressed:
+                      _isSaving ? null : () => _pickImage(ImageSource.camera),
                   icon: const Icon(Icons.camera_alt_outlined),
                   label: Text(tCamera),
                 ),
@@ -324,7 +334,49 @@ class _BannerEditorScreenState extends State<BannerEditorScreen> {
             ),
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
+
+          // ═══ عرض البنر ═══
+          Row(
+            children: [
+              const Icon(Icons.swap_horiz_rounded, size: 20),
+              const SizedBox(width: 8),
+              Text('$tHeightLabel (عرض): $_widthPercent%'),
+            ],
+          ),
+          Slider(
+            value: _widthPercent.toDouble(),
+            min: 50,
+            max: 100,
+            divisions: 10,
+            label: '$_widthPercent%',
+            onChanged: _isSaving
+                ? null
+                : (v) => setState(() => _widthPercent = v.round()),
+          ),
+
+          const SizedBox(height: 8),
+
+          // ═══ ارتفاع البنر ═══
+          Row(
+            children: [
+              const Icon(Icons.height, size: 20),
+              const SizedBox(width: 8),
+              Text('$tHeightLabel (ارتفاع): $_height'),
+            ],
+          ),
+          Slider(
+            value: _height.toDouble(),
+            min: 100,
+            max: 400,
+            divisions: 30,
+            label: '$_height px',
+            onChanged: _isSaving
+                ? null
+                : (v) => setState(() => _height = v.round()),
+          ),
+
+          const SizedBox(height: 8),
 
           SwitchListTile(
             title: Text(tActive),

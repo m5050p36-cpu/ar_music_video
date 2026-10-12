@@ -133,6 +133,7 @@ class AdminService {
     required int displayOrder,
     required int height,
     bool isActive = true,
+    int widthPercent = 100,
   }) async {
     if (!SupabaseService.isInitialized) return false;
     try {
@@ -146,6 +147,7 @@ class AdminService {
             : targetUrl.trim(),
         'display_order': displayOrder,
         'height': height.clamp(100, 400),
+        'width_percent': widthPercent.clamp(50, 100),
         'is_active': isActive,
       }).timeout(SupabaseConfig.timeout);
       return true;
@@ -163,6 +165,7 @@ class AdminService {
     required int displayOrder,
     required int height,
     required bool isActive,
+    int widthPercent = 100,
   }) async {
     if (!SupabaseService.isInitialized) return false;
     try {
@@ -178,6 +181,7 @@ class AdminService {
                 : targetUrl.trim(),
             'display_order': displayOrder,
             'height': height.clamp(100, 400),
+            'width_percent': widthPercent.clamp(50, 100),
             'is_active': isActive,
           })
           .eq('id', bannerId)
@@ -192,7 +196,6 @@ class AdminService {
   static Future<bool> deleteBanner(String bannerId) async {
     if (!SupabaseService.isInitialized) return false;
     try {
-      // احذف الصورة أولًا
       final row = await SupabaseService.client
           .from('banners')
           .select('image_url')
@@ -242,7 +245,6 @@ class AdminService {
   }) async {
     if (!SupabaseService.isInitialized) return false;
     try {
-      // استخدام +1000 كقيمة وسيطة لتفادي التصادم على UNIQUE (لو وُجد)
       await SupabaseService.client
           .from('banners')
           .update({'display_order': orderA + 1000})

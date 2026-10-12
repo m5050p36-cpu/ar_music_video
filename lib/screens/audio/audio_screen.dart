@@ -21,6 +21,7 @@ class AudioScreen extends StatefulWidget {
 class _AudioScreenState extends State<AudioScreen>
     with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   late TabController _tabController;
+  final ScrollController _scrollController = ScrollController();
   List<AudioTrack> _tracks = [];
   bool _isScanning = false;
   List<String> _favoritePaths = [];
@@ -39,6 +40,7 @@ class _AudioScreenState extends State<AudioScreen>
   @override
   void dispose() {
     _tabController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -93,6 +95,33 @@ class _AudioScreenState extends State<AudioScreen>
       appBar: AppBar(
         title: Text(context.tr('audio_library')),
         actions: [
+          if (player.currentTrack != null)
+            IconButton(
+              icon: const Icon(Icons.my_location_rounded),
+              tooltip: 'الانتقال للأغنية الحالية',
+              onPressed: () {
+                final idx = _tracks
+                    .indexWhere((t) => t.id == player.currentTrack!.id);
+                if (idx < 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('الأغنية الحالية ليست في هذه القائمة')),
+                  );
+                  return;
+                }
+                _tabController.animateTo(0);
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (_scrollController.hasClients) {
+                    const rowH = 68.0;
+                    _scrollController.animateTo(
+                      idx * rowH,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                    );
+                  }
+                });
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: context.tr('audio_refresh'),

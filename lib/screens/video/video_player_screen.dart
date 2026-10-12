@@ -10,6 +10,7 @@ import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/services/pip_service.dart';
+import '../../core/services/volume_boost_service.dart';
 import '../../models/video_item.dart';
 
 enum _AspectMode { fit, fill, stretch }
@@ -46,6 +47,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   double _brightness = 0.5;
   int _currentIndex = 0;
   _AspectMode _aspectMode = _AspectMode.fit;
+  String _boostKey = 'off';
 
   // المؤقتات
   Timer? _controlsTimer;
@@ -666,6 +668,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     case 'lock':
                       _toggleLock();
                       break;
+                    case 'boost:off':
+                    case 'boost:x1_5':
+                    case 'boost:x2':
+                    case 'boost:x2_5':
+                    case 'boost:x3':
+                      _setBoost(val.substring(6));
+                      break;
                   }
                 },
                 itemBuilder: (_) => [
@@ -729,6 +738,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       ],
                     ),
                   ),
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(
+                    value: 'noop2',
+                    enabled: false,
+                    child: Row(
+                      children: [
+                        Icon(Icons.volume_up_rounded, size: 18),
+                        SizedBox(width: 8),
+                        Text('مضاعفة الصوت',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                  ..._videoBoostItems(),
                 ],
               ),
             ],
@@ -898,6 +921,55 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ),
       ),
     );
+  }
+
+  List<PopupMenuEntry<String>> _videoBoostItems() {
+    final options = [
+      ('off', 'بدون'),
+      ('x1_5', '1.5x'),
+      ('x2', '2x'),
+      ('x2_5', '2.5x'),
+      ('x3', '3x'),
+    ];
+    return options.map((o) {
+      final selected = _boostKey == o.$1;
+      return PopupMenuItem<String>(
+        value: 'boost:${o.$1}',
+        child: Row(
+          children: [
+            Icon(
+              selected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              size: 18,
+              color: selected ? Colors.green : null,
+            ),
+            const SizedBox(width: 8),
+            Text(o.$2),
+          ],
+        ),
+      );
+    }).toList();
+  }
+
+  Future<void> _setBoost(String key) async {
+    _boostKey = key;
+    if (mounted) setState(() {});
+    try {
+      final mB = VolumeBoostService.levels[key] ?? 0;
+      if (mB <= 0) {
+        await VolumeBoostService.disable();
+      } else {
+        // video_player لا يكشف audioSessionId — session 0 (global mix)
+        await VolumeBoostService.enable(
+          sessionId: 0,
+          millibels: mB,
+        );
+      }
+    } catch (e) {
+      debugPrint('_setBoost error: $e');
+    }
+    _bumpControls();
   }
 
   String _formatDuration(Duration d) {

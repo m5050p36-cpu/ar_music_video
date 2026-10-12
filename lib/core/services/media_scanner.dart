@@ -1,8 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:on_audio_query/on_audio_query.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import '../../models/audio_track.dart';
@@ -12,17 +9,9 @@ class MediaScanner {
   MediaScanner._();
 
   static final OnAudioQuery _audioQuery = OnAudioQuery();
-  static Directory? _thumbDir;
 
-  /// مجلد حفظ الصور المصغرة (دائم)
-  static Future<Directory> _getThumbDir() async {
-    if (_thumbDir != null && _thumbDir!.existsSync()) return _thumbDir!;
-    final appDir = await getApplicationSupportDirectory();
-    final dir = Directory('${appDir.path}/video_thumbs');
-    if (!dir.existsSync()) await dir.create(recursive: true);
-    _thumbDir = dir;
-    return dir;
-  }
+  /// عدد المهام المتوازية عند قراءة مسارات الملفات
+  static const int _pathWorkers = 12;
 
   // ═══════════════════════ Audio ═══════════════════════
 
@@ -70,6 +59,8 @@ class MediaScanner {
 
   // ═══════════════════════ Video ═══════════════════════
 
+  /// فحص سريع — بدون توليد صور مصغرة.
+  /// الصور تُولَّد lazy في الواجهة عبر `VideoThumbnailCache`.
   static Future<List<VideoItem>> scanVideos() async {
     try {
       final permission = await PhotoManager.requestPermissionExtend(
@@ -98,65 +89,61 @@ class MediaScanner {
 
       final allVideos = albums.first;
       final assets = await allVideos.getAssetListRange(start: 0, end: 2000);
-      final thumbDir = await _getThumbDir();
 
-      final items = <VideoItem>[];
-      for (final a in assets) {
-        final file = await a.file;
-        if (file == null) continue;
-
-        final rawTitle = a.title;
-        final title = (rawTitle != null && rawTitle.isNotEmpty)
-            ? rawTitle
-            : _fileName(file.path);
-
-        final rawPath = a.relativePath;
-        final folder = (rawPath != null && rawPath.isNotEmpty)
-            ? rawPath.split('/').first
-            : 'فيديوهات';
-
-        // توليد الصورة المصغرة مرة واحدة فقط — تُحفظ دائمًا
-        final thumbPath = await _ensureThumbnail(a, thumbDir);
-
-        items.add(
-          VideoItem(
-            id: a.id,
-            title: title,
-            path: file.path,
-            folderName: folder,
-            duration: Duration(seconds: a.duration),
-            thumbnailPath: thumbPath,
-            asset: a,
-          ),
-        );
-      }
-      return items;
+      return await _buildItems(assets);
     } catch (e) {
       debugPrint('scanVideos error: $e');
       return [];
     }
   }
 
-  /// يولّد الصورة المصغرة إن لم تكن موجودة — وإلا يعيد المسار المحفوظ
-  static Future<String?> _ensureThumbnail(
-    AssetEntity asset,
-    Directory thumbDir,
+  /// بناء قائمة VideoItem بمهام متوازية (12 ملفًا في نفس الوقت)
+  static Future<List<VideoItem>> _buildItems(
+    List<AssetEntity> assets,
   ) async {
-    try {
-      final file = File('${thumbDir.path}/${asset.id}.jpg');
-      if (file.existsSync() && file.lengthSync() > 0) {
-        return file.path;
-      }
+    final items = <VideoItem>[];
 
-      final bytes = await asset.thumbnailDataWithSize(
-        const ThumbnailSize(400, 400),
-        quality: 80,
+    for (var i = 0; i < assets.length; i += _pathWorkers) {
+      final end = (i + _pathWorkers < assets.length)
+          ? i + _pathWorkers
+          : assets.length;
+      final batch = assets.sublist(i, end);
+
+      final batchItems = await Future.wait(
+        batch.map(_buildOne),
       );
-      if (bytes == null) return null;
-      await file.writeAsBytes(bytes);
-      return file.path;
+      items.addAll(batchItems.whereType<VideoItem>());
+    }
+
+    return items;
+  }
+
+  static Future<VideoItem?> _buildOne(AssetEntity a) async {
+    try {
+      final file = await a.file;
+      if (file == null) return null;
+
+      final rawTitle = a.title;
+      final title = (rawTitle != null && rawTitle.isNotEmpty)
+          ? rawTitle
+          : _fileName(file.path);
+
+      final rawPath = a.relativePath;
+      final folder = (rawPath != null && rawPath.isNotEmpty)
+          ? rawPath.split('/').first
+          : 'فيديوهات';
+
+      return VideoItem(
+        id: a.id,
+        title: title,
+        path: file.path,
+        folderName: folder,
+        duration: Duration(seconds: a.duration),
+        thumbnailPath: null, // يُملأ عند العرض
+        asset: a,
+      );
     } catch (e) {
-      debugPrint('thumbnail error for ${asset.id}: $e');
+      debugPrint('buildOne error: $e');
       return null;
     }
   }

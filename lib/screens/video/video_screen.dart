@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -6,6 +6,7 @@ import '../../core/localization/app_strings.dart';
 import '../../core/services/media_cache.dart';
 import '../../core/services/media_scanner.dart';
 import '../../core/services/video_favorites_service.dart';
+import '../../core/services/video_thumbnail_cache.dart';
 import '../../models/video_item.dart';
 import '../../widgets/media_item_menu.dart';
 import 'video_player_screen.dart';
@@ -48,11 +49,16 @@ class _VideoScreenState extends State<VideoScreen>
   }
 
   Future<void> _bootstrap() async {
+    // 1. كاش فوري — الواجهة تظهر خلال ميلي ثانية
     final cached = await MediaCache.loadVideos();
-    if (mounted && cached.isNotEmpty) {
-      setState(() => _videos = cached);
+    if (!mounted) return;
+    if (cached.isNotEmpty) {
+      setState(() {
+        _videos = cached;
+      });
     }
 
+    // 2. فحص في الخلفية فقط إن كان الكاش قديمًا
     final stale = await MediaCache.isVideoStale();
     if (!stale && cached.isNotEmpty) return;
 
@@ -61,7 +67,7 @@ class _VideoScreenState extends State<VideoScreen>
 
   Future<void> _backgroundScan() async {
     if (_isScanning) return;
-    setState(() => _isScanning = true);
+    if (mounted) setState(() => _isScanning = true);
 
     final fresh = await MediaScanner.scanVideos();
 
@@ -79,12 +85,15 @@ class _VideoScreenState extends State<VideoScreen>
 
   Future<void> _forceRescan() async {
     await MediaCache.clear();
-    setState(() => _videos = []);
+    if (mounted) {
+      setState(() {
+        _videos = [];
+      });
+    }
     await _backgroundScan();
   }
 
   void _openPlayer(VideoItem v) {
-    // مرّر كل القائمة + الفهرس الحالي لدعم التقليب والتالي/السابق
     final list = _videos.isEmpty ? <VideoItem>[v] : _videos;
     final idx = list.indexWhere((x) => x.id == v.id);
     Navigator.push(
@@ -118,6 +127,17 @@ class _VideoScreenState extends State<VideoScreen>
       appBar: AppBar(
         title: Text(tLibrary),
         actions: [
+          if (_isScanning)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
           IconButton(
             icon: Icon(
               _isGridView ? Icons.view_list_rounded : Icons.grid_view_rounded,
@@ -142,55 +162,28 @@ class _VideoScreenState extends State<VideoScreen>
       ),
       body: _videos.isEmpty && _isScanning
           ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildAllVideosTab(tEmpty),
-                _buildAlbumsTab(tAlbums),
-                _buildFavoritesTab(tEmpty),
-              ],
-            ),
+          : _videos.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(tEmpty, textAlign: TextAlign.center),
+                  ),
+                )
+              : TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildAllVideosTab(),
+                    _buildAlbumsTab(tAlbums),
+                    _buildFavoritesTab(),
+                  ],
+                ),
     );
   }
 
-  Widget _buildThumbnail(VideoItem v) {
-    if (v.thumbnailPath != null) {
-      final f = File(v.thumbnailPath!);
-      if (f.existsSync()) {
-        return Image.file(
-          f,
-          fit: BoxFit.cover,
-          filterQuality: FilterQuality.medium,
-          errorBuilder: (_, __, ___) => _thumbnailFallback(),
-        );
-      }
-    }
-    return _thumbnailFallback();
-  }
-
-  Widget _thumbnailFallback() {
-    return Container(
-      color: Colors.black26,
-      child: const Center(
-        child: Icon(
-          Icons.play_circle_outline,
-          size: 44,
-          color: Colors.white70,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAllVideosTab(String emptyText) {
-    if (_videos.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(emptyText, textAlign: TextAlign.center),
-        ),
-      );
-    }
-
+  // ═══════════════════════════════════════════════════════════════
+  // Grid
+  // ═══════════════════════════════════════════════════════════════
+  Widget _buildAllVideosTab() {
     if (_isGridView) {
       return GridView.builder(
         padding: const EdgeInsets.all(12),
@@ -201,120 +194,21 @@ class _VideoScreenState extends State<VideoScreen>
           mainAxisSpacing: 10,
         ),
         itemCount: _videos.length,
+        // ⚡ performance: لا نبقي العناصر خارج الشاشة حية
+        addAutomaticKeepAlives: false,
+        addRepaintBoundaries: true,
         itemBuilder: (context, i) {
           final v = _videos[i];
           final isFav = _favoritePaths.contains(v.path);
-          return GestureDetector(
+          return _VideoGridTile(
+            video: v,
+            isFav: isFav,
             onTap: () => _openPlayer(v),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _buildThumbnail(v),
-                  // شارة المدة
-                  if (v.duration.inSeconds > 0)
-                    Positioned(
-                      top: 6,
-                      right: 6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.7),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          _formatDuration(v.duration),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  // زر المفضلة
-                  Positioned(
-                    top: 4,
-                    left: 4,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        customBorder: const CircleBorder(),
-                        onTap: () async {
-                          await VideoFavoritesService.toggleFavorite(v.path);
-                          _loadFavorites();
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.5),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            isFav ? Icons.favorite : Icons.favorite_border,
-                            color:
-                                isFav ? Colors.redAccent : Colors.white,
-                            size: 18,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  // زر الخيارات
-                  Positioned(
-                    top: 4,
-                    right: 4,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.5),
-                          shape: BoxShape.circle,
-                        ),
-                        child: MediaItemMenu(
-                          path: v.path,
-                          isVideo: true,
-                          assetId: v.id,
-                          onChanged: () {
-                            _forceRescan();
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                  // اسم الفيديو
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Colors.transparent, Colors.black87],
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                        ),
-                      ),
-                      child: Text(
-                        v.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            onToggleFav: () async {
+              await VideoFavoritesService.toggleFavorite(v.path);
+              _loadFavorites();
+            },
+            onChanged: _forceRescan,
           );
         },
       );
@@ -323,6 +217,8 @@ class _VideoScreenState extends State<VideoScreen>
     return ListView.builder(
       itemCount: _videos.length,
       itemExtent: 72,
+      addAutomaticKeepAlives: false,
+      addRepaintBoundaries: true,
       itemBuilder: (context, i) {
         final v = _videos[i];
         final isFav = _favoritePaths.contains(v.path);
@@ -334,7 +230,7 @@ class _VideoScreenState extends State<VideoScreen>
             child: SizedBox(
               width: 72,
               height: 54,
-              child: _buildThumbnail(v),
+              child: _LazyThumb(video: v),
             ),
           ),
           title: Text(v.title, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -359,9 +255,7 @@ class _VideoScreenState extends State<VideoScreen>
                 path: v.path,
                 isVideo: true,
                 assetId: v.id,
-                onChanged: () {
-                  _forceRescan();
-                },
+                onChanged: _forceRescan,
               ),
             ],
           ),
@@ -371,10 +265,12 @@ class _VideoScreenState extends State<VideoScreen>
     );
   }
 
-  Widget _buildFavoritesTab(String emptyText) {
-    final favs = _videos
-        .where((v) => _favoritePaths.contains(v.path))
-        .toList();
+  // ═══════════════════════════════════════════════════════════════
+  // Favorites
+  // ═══════════════════════════════════════════════════════════════
+  Widget _buildFavoritesTab() {
+    final favs =
+        _videos.where((v) => _favoritePaths.contains(v.path)).toList();
 
     if (favs.isEmpty) {
       return Center(
@@ -385,7 +281,7 @@ class _VideoScreenState extends State<VideoScreen>
             children: [
               const Icon(Icons.favorite_border, size: 64),
               const SizedBox(height: 12),
-              Text(emptyText, textAlign: TextAlign.center),
+              Text(context.tr('video_empty'), textAlign: TextAlign.center),
             ],
           ),
         ),
@@ -395,6 +291,8 @@ class _VideoScreenState extends State<VideoScreen>
     return ListView.builder(
       itemCount: favs.length,
       itemExtent: 72,
+      addAutomaticKeepAlives: false,
+      addRepaintBoundaries: true,
       itemBuilder: (context, i) {
         final v = favs[i];
         return ListTile(
@@ -405,7 +303,7 @@ class _VideoScreenState extends State<VideoScreen>
             child: SizedBox(
               width: 72,
               height: 54,
-              child: _buildThumbnail(v),
+              child: _LazyThumb(video: v),
             ),
           ),
           title: Text(v.title, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -427,9 +325,7 @@ class _VideoScreenState extends State<VideoScreen>
                 path: v.path,
                 isVideo: true,
                 assetId: v.id,
-                onChanged: () {
-                  _forceRescan();
-                },
+                onChanged: _forceRescan,
               ),
             ],
           ),
@@ -439,6 +335,9 @@ class _VideoScreenState extends State<VideoScreen>
     );
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // Albums
+  // ═══════════════════════════════════════════════════════════════
   Widget _buildAlbumsTab(String emptyText) {
     final Map<String, List<VideoItem>> albums = {};
     for (final v in _videos) {
@@ -482,6 +381,209 @@ class _VideoScreenState extends State<VideoScreen>
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// بطاقة شبكة مع lazy thumbnail + زر قائمة
+// ═══════════════════════════════════════════════════════════════
+class _VideoGridTile extends StatelessWidget {
+  final VideoItem video;
+  final bool isFav;
+  final VoidCallback onTap;
+  final VoidCallback onToggleFav;
+  final VoidCallback onChanged;
+
+  const _VideoGridTile({
+    required this.video,
+    required this.isFav,
+    required this.onTap,
+    required this.onToggleFav,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: GestureDetector(
+        onTap: onTap,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _LazyThumb(video: video),
+              if (video.duration.inSeconds > 0)
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      _fmt(video.duration),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              Positioned(
+                top: 4,
+                left: 4,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: onToggleFav,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        isFav ? Icons.favorite : Icons.favorite_border,
+                        color: isFav ? Colors.redAccent : Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 4,
+                right: 4,
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      shape: BoxShape.circle,
+                    ),
+                    child: MediaItemMenu(
+                      path: video.path,
+                      isVideo: true,
+                      assetId: video.id,
+                      onChanged: onChanged,
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.transparent, Colors.black87],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                  ),
+                  child: Text(
+                    video.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _fmt(Duration d) {
+    final m = d.inMinutes;
+    final s = d.inSeconds % 60;
+    return '$m:${s < 10 ? '0' : ''}$s';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ويدجت الصورة المصغرة — lazy + cached
+// ═══════════════════════════════════════════════════════════════
+class _LazyThumb extends StatefulWidget {
+  final VideoItem video;
+  const _LazyThumb({required this.video});
+
+  @override
+  State<_LazyThumb> createState() => _LazyThumbState();
+}
+
+class _LazyThumbState extends State<_LazyThumb> {
+  Uint8List? _bytes;
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final bytes = await VideoThumbnailCache.get(
+      assetId: widget.video.id,
+      asset: widget.video.asset,
+    );
+    if (!mounted) return;
+    setState(() {
+      _bytes = bytes;
+      _loaded = true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_bytes != null) {
+      return Image.memory(
+        _bytes!,
+        fit: BoxFit.cover,
+        filterQuality: FilterQuality.low,
+        gaplessPlayback: true,
+        cacheWidth: 400,
+      );
+    }
+    if (!_loaded) {
+      return Container(
+        color: Colors.black12,
+        alignment: Alignment.center,
+        child: const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    return Container(
+      color: Colors.black26,
+      alignment: Alignment.center,
+      child: const Icon(
+        Icons.play_circle_outline,
+        size: 36,
+        color: Colors.white70,
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// شاشة ألبوم
+// ═══════════════════════════════════════════════════════════════
 class _AlbumVideosScreen extends StatelessWidget {
   final String albumName;
   final List<VideoItem> videos;
@@ -497,10 +599,22 @@ class _AlbumVideosScreen extends StatelessWidget {
       appBar: AppBar(title: Text(albumName)),
       body: ListView.builder(
         itemCount: videos.length,
+        itemExtent: 72,
+        addAutomaticKeepAlives: false,
+        addRepaintBoundaries: true,
         itemBuilder: (context, i) {
           final v = videos[i];
           return ListTile(
-            leading: const Icon(Icons.play_circle_outline),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            leading: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 72,
+                height: 54,
+                child: _LazyThumb(video: v),
+              ),
+            ),
             title: Text(v.title, maxLines: 1, overflow: TextOverflow.ellipsis),
             onTap: () => Navigator.push(
               context,
@@ -508,6 +622,8 @@ class _AlbumVideosScreen extends StatelessWidget {
                 builder: (_) => VideoPlayerScreen(
                   videoPath: v.path,
                   title: v.title,
+                  playlist: videos,
+                  initialIndex: i,
                 ),
               ),
             ),

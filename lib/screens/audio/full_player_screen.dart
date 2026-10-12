@@ -26,6 +26,37 @@ class FullPlayerScreen extends StatelessWidget {
     }
   }
 
+  List<PopupMenuEntry<String>> _boostOptions(String current) {
+    final entries = <PopupMenuEntry<String>>[];
+    final options = [
+      ('off', 'بدون'),
+      ('x1_5', '1.5x'),
+      ('x2', '2x'),
+      ('x2_5', '2.5x'),
+      ('x3', '3x'),
+    ];
+    for (final o in options) {
+      final selected = current == o.$1;
+      entries.add(PopupMenuItem(
+        value: 'boost:${o.$1}',
+        child: Row(
+          children: [
+            Icon(
+              selected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              size: 18,
+              color: selected ? Colors.green : null,
+            ),
+            const SizedBox(width: 8),
+            Text(o.$2),
+          ],
+        ),
+      ));
+    }
+    return entries;
+  }
+
   void _showSleepTimerDialog(
     BuildContext context,
     PlayerProvider provider,
@@ -106,6 +137,29 @@ class FullPlayerScreen extends StatelessWidget {
             icon: const Icon(Icons.bedtime_outlined),
             tooltip: context.tr('player_sleep_timer'),
             onPressed: () => _showSleepTimerDialog(context, player),
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (v) {
+              if (v.startsWith('boost:')) {
+                player.setBoost(v.substring(6));
+              }
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'noop',
+                enabled: false,
+                child: Row(
+                  children: [
+                    Icon(Icons.volume_up_rounded, size: 18),
+                    SizedBox(width: 8),
+                    Text('مضاعفة الصوت',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+              ..._boostOptions(player.boostKey),
+            ],
           ),
         ],
       ),

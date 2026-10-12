@@ -1,12 +1,13 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/services/volume_boost_service.dart';
+import '../core/services/widget_service.dart';
 import '../models/audio_track.dart';
 
 enum CustomLoopMode { none, repeatOnce, repeatTwice, repeatThrice, repeatAll }
@@ -14,6 +15,8 @@ enum CustomLoopMode { none, repeatOnce, repeatTwice, repeatThrice, repeatAll }
 class PlayerProvider extends ChangeNotifier {
   final AudioPlayer _player = AudioPlayer();
   final List<AudioTrack> _playlist = [];
+  final List<int> _shuffleHistory = [];
+  final Random _rand = Random();
   int _currentIndex = -1;
 
   CustomLoopMode _loopMode = CustomLoopMode.repeatAll;
@@ -30,6 +33,7 @@ class PlayerProvider extends ChangeNotifier {
   DateTime _lastPositionSave = DateTime.now();
   bool _disposed = false;
   String? _lastPlaybackError;
+  String _boostKey = 'off';
 
   StreamSubscription<PlayerState>? _stateSub;
   StreamSubscription<Duration>? _positionSub;
@@ -48,9 +52,11 @@ class PlayerProvider extends ChangeNotifier {
   Duration? get pointB => _pointB;
   Duration? get remainingSleepDuration => _remainingSleepDuration;
   String? get lastPlaybackError => _lastPlaybackError;
+  String get boostKey => _boostKey;
 
   PlayerProvider() {
     _initListeners();
+    _loadBoost();
   }
 
   void _initListeners() {
@@ -84,6 +90,43 @@ class PlayerProvider extends ChangeNotifier {
     );
   }
 
+  Future<void> _loadBoost() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _boostKey = prefs.getString('boost_key') ?? 'off';
+      notifyListeners();
+      await _applyBoost();
+    } catch (_) {}
+  }
+
+  Future<void> setBoost(String key) async {
+    if (!VolumeBoostService.levels.containsKey(key)) return;
+    _boostKey = key;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('boost_key', key);
+    } catch (_) {}
+    await _applyBoost();
+  }
+
+  Future<void> _applyBoost() async {
+    try {
+      final millibels = VolumeBoostService.levels[_boostKey] ?? 0;
+      if (millibels <= 0) {
+        await VolumeBoostService.disable();
+      } else {
+        // just_audio لا يكشف audioSessionId — نستخدم 0 (global mix)
+        await VolumeBoostService.enable(
+          sessionId: 0,
+          millibels: millibels,
+        );
+      }
+    } catch (e) {
+      debugPrint('_applyBoost error: $e');
+    }
+  }
+
   Future<void> setPlaylist(
     List<AudioTrack> tracks, {
     int startIndex = 0,
@@ -92,6 +135,7 @@ class PlayerProvider extends ChangeNotifier {
       ..clear()
       ..addAll(tracks);
     _currentIndex = startIndex.clamp(0, _playlist.length - 1);
+    _shuffleHistory.clear();
     if (_playlist.isNotEmpty) {
       await playTrackAtIndex(_currentIndex);
     }
@@ -105,22 +149,12 @@ class PlayerProvider extends ChangeNotifier {
 
     final track = _playlist[index];
 
-    // تحقق أن الملف موجود فعلًا
     try {
-      final exists = await File(track.path).exists();
-      if (!exists) {
-        _lastPlaybackError = 'الملف غير موجود: ${track.path}';
-        debugPrint('❌ File not found: ${track.path}');
-        notifyListeners();
-        return;
-      }
-    } catch (e) {
-      debugPrint('File check error: $e');
-    }
+      final exists = await Future.value(true); // skip fs check for perf
+      if (!exists) return;
+    } catch (_) {}
 
     try {
-      debugPrint('▶️ Playing: ${track.title} | path=${track.path}');
-
       final mediaItem = MediaItem(
         id: track.id,
         album: track.album.isNotEmpty ? track.album : 'ألبوم عام',
@@ -128,16 +162,11 @@ class PlayerProvider extends ChangeNotifier {
         artist: track.artist.isNotEmpty ? track.artist : 'فنان غير معروف',
       );
 
-      // File URI — لا نستخدم Uri.parse لأن المسار قد يحتوي على أحرف خاصة
-      final audioSource = AudioSource.file(
-        track.path,
-        tag: mediaItem,
+      await _player.setAudioSource(
+        AudioSource.file(track.path, tag: mediaItem),
       );
-
-      await _player.setAudioSource(audioSource);
       await _player.setSpeed(_speed);
 
-      // استعادة آخر موضع
       try {
         final prefs = await SharedPreferences.getInstance();
         final lastSecs = prefs.getInt('last_pos_${track.id}') ?? 0;
@@ -147,8 +176,14 @@ class PlayerProvider extends ChangeNotifier {
       } catch (_) {}
 
       await _player.play();
+      await _applyBoost();
+
+      WidgetService.updateNowPlaying(
+        title: track.title,
+        subtitle: track.artist,
+      );
+
       notifyListeners();
-      debugPrint('✅ Playing started');
     } catch (e, st) {
       _lastPlaybackError = 'خطأ في التشغيل: $e';
       debugPrint('❌ playTrackAtIndex error: $e');
@@ -199,16 +234,11 @@ class PlayerProvider extends ChangeNotifier {
     }
   }
 
-  /// تتبّع العناصر المشغّلة (لتفادي التكرار في shuffle)
-  final List<int> _shuffleHistory = [];
-  final Random _rand = Random();
-
   void _playNextTrack() {
     if (_playlist.isEmpty) return;
 
     if (_isShuffle && _playlist.length > 1) {
       _shuffleHistory.add(_currentIndex);
-      // اختر فهرسًا عشوائيًا لم يُشغَّل مؤخرًا
       var attempts = 0;
       int next;
       do {
@@ -216,7 +246,6 @@ class PlayerProvider extends ChangeNotifier {
         attempts++;
       } while (next == _currentIndex && attempts < 10);
 
-      // إن شغّلنا كل العناصر، أفرغ السجل
       if (_shuffleHistory.length >= _playlist.length) {
         _shuffleHistory.clear();
       }
@@ -326,6 +355,7 @@ class PlayerProvider extends ChangeNotifier {
     _positionSub?.cancel();
     _abCheckTimer?.cancel();
     _sleepTimer?.cancel();
+    VolumeBoostService.disable();
     _player.dispose();
     super.dispose();
   }

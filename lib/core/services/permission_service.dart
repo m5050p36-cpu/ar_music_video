@@ -3,16 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
 
-/// يطلب كل الصلاحيات التي يحتاجها التطبيق — يعمل على كل إصدارات Android.
 class PermissionService {
   PermissionService._();
 
-  /// يُستدعى مرة واحدة عند أول تشغيل.
-  /// يرجّع `true` إن مُنحت كل الصلاحيات الأساسية.
   static Future<bool> requestAll(BuildContext? context) async {
     if (!Platform.isAndroid) return true;
 
-    final List<Permission> perms = [
+    final perms = <Permission>[
       Permission.notification,
       Permission.audio,
       Permission.videos,
@@ -24,16 +21,26 @@ class PermissionService {
     try {
       statuses = await perms.request();
     } catch (e) {
-      debugPrint('permission_handler request error: $e');
+      debugPrint('permission request error: $e');
     }
 
     try {
       await PhotoManager.requestPermissionExtend();
-    } catch (e) {
-      debugPrint('photo_manager request error: $e');
+    } catch (_) {}
+
+    // ═══ Android 11+ — يحتاج MANAGE_EXTERNAL_STORAGE للحذف الفعلي ═══
+    if (Platform.isAndroid) {
+      try {
+        final manageStatus = await Permission.manageExternalStorage.status;
+        if (!manageStatus.isGranted) {
+          // يفتح شاشة الإعدادات — لا يمكن منحه من dialog عادي
+          await Permission.manageExternalStorage.request();
+        }
+      } catch (e) {
+        debugPrint('manageExternalStorage request error: $e');
+      }
     }
 
-    // ⚠️ الأقواس ضرورية — بدونها أسبقية ?? تُفسد التعبير
     final bool audioGranted =
         (statuses[Permission.audio]?.isGranted ?? false) ||
         (statuses[Permission.storage]?.isGranted ?? false);
@@ -41,17 +48,29 @@ class PermissionService {
         (statuses[Permission.videos]?.isGranted ?? false) ||
         (statuses[Permission.storage]?.isGranted ?? false);
 
-    final bool coreGranted = audioGranted || videoGranted;
+    return audioGranted || videoGranted;
+  }
 
-    if (!coreGranted && context != null && context.mounted) {
-      final bool permanentlyDenied =
-          statuses.values.any((s) => s.isPermanentlyDenied);
-      if (permanentlyDenied) {
-        _showSettingsDialog(context);
-      }
+  /// هل صلاحية إدارة الملفات مُمنوحة (Android 11+)؟
+  static Future<bool> hasManageStorage() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final s = await Permission.manageExternalStorage.status;
+      return s.isGranted;
+    } catch (_) {
+      return false;
     }
+  }
 
-    return coreGranted;
+  /// يفتح شاشة الإعدادات لمنح صلاحية إدارة الملفات
+  static Future<bool> requestManageStorage() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final s = await Permission.manageExternalStorage.request();
+      return s.isGranted;
+    } catch (_) {
+      return false;
+    }
   }
 
   static Future<bool> hasCorePermissions() async {
@@ -68,15 +87,12 @@ class PermissionService {
     }
   }
 
-  static void _showSettingsDialog(BuildContext context) {
+  static void showSettingsDialog(BuildContext context, String reason) {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('الصلاحيات مرفوضة'),
-        content: const Text(
-          'لأجل عرض ملفات الصوت والفيديو في جهازك، نحتاج صلاحية الوصول.\n\n'
-          'افتح الإعدادات → الصلاحيات → فعّل "الموسيقى والفيديو".',
-        ),
+        title: const Text('صلاحية مطلوبة'),
+        content: Text(reason),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),

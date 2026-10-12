@@ -7,8 +7,8 @@ import '../../core/services/media_cache.dart';
 import '../../core/services/media_scanner.dart';
 import '../../models/audio_track.dart';
 import '../../providers/player_provider.dart';
-import '../../widgets/playing_indicator.dart';
 import '../../widgets/media_item_menu.dart';
+import '../../widgets/playing_indicator.dart';
 import '../../widgets/track_artwork.dart';
 
 class AudioScreen extends StatefulWidget {
@@ -54,19 +54,15 @@ class _AudioScreenState extends State<AudioScreen>
     if (mounted && cached.isNotEmpty) {
       setState(() => _tracks = cached);
     }
-
     final stale = await MediaCache.isAudioStale();
     if (!stale && cached.isNotEmpty) return;
-
     await _backgroundScan();
   }
 
   Future<void> _backgroundScan() async {
     if (_isScanning) return;
     setState(() => _isScanning = true);
-
     final fresh = await MediaScanner.scanAudio();
-
     if (!mounted) return;
     if (fresh.isNotEmpty) {
       setState(() {
@@ -81,7 +77,7 @@ class _AudioScreenState extends State<AudioScreen>
 
   Future<void> _forceRescan() async {
     await MediaCache.clear();
-    setState(() => _tracks = []);
+    if (mounted) setState(() => _tracks = []);
     await _backgroundScan();
   }
 
@@ -100,19 +96,21 @@ class _AudioScreenState extends State<AudioScreen>
               icon: const Icon(Icons.my_location_rounded),
               tooltip: 'الانتقال للأغنية الحالية',
               onPressed: () {
-                final idx = _tracks
-                    .indexWhere((t) => t.id == player.currentTrack!.id);
+                final idx = _tracks.indexWhere(
+                  (t) => t.id == player.currentTrack!.id,
+                );
                 if (idx < 0) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                        content: Text('الأغنية الحالية ليست في هذه القائمة')),
+                      content: Text('الأغنية الحالية ليست في هذه القائمة'),
+                    ),
                   );
                   return;
                 }
                 _tabController.animateTo(0);
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (_scrollController.hasClients) {
-                    const rowH = 68.0;
+                    const rowH = 76.0;
                     _scrollController.animateTo(
                       idx * rowH,
                       duration: const Duration(milliseconds: 300),
@@ -150,6 +148,9 @@ class _AudioScreenState extends State<AudioScreen>
     );
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // قائمة الأغاني — تصميم Spotify
+  // ═══════════════════════════════════════════════════════════════
   Widget _buildTrackList(List<AudioTrack> list, PlayerProvider player) {
     if (list.isEmpty) {
       return Center(
@@ -163,89 +164,123 @@ class _AudioScreenState extends State<AudioScreen>
       );
     }
 
+    final theme = Theme.of(context);
+
     return ListView.builder(
+      controller: _scrollController,
       itemCount: list.length,
-      itemExtent: 72,
+      itemExtent: 76,
+      addAutomaticKeepAlives: false,
+      addRepaintBoundaries: true,
       itemBuilder: (context, i) {
         final t = list[i];
-        final isPlaying = player.currentTrack?.id == t.id &&
-            player.player.playing;
         final isCurrent = player.currentTrack?.id == t.id;
+        final isPlaying = isCurrent && player.player.playing;
         final isFav = _favoritePaths.contains(t.path);
-        final theme = Theme.of(context);
 
-        return ListTile(
-          leading: Stack(
-            children: [
-              TrackArtwork(
-                songId: t.id,
-                size: 52,
-                borderRadius: 8,
-                fallbackIcon: isCurrent
-                    ? Icons.equalizer_rounded
-                    : Icons.music_note,
-              ),
-              // 🎵 مؤشر التشغيل يظهر على الصورة عند التشغيل
-              if (isPlaying)
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(8),
+        return InkWell(
+          onTap: () => player.setPlaylist(list, startIndex: i),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: Row(
+              children: [
+                // ═══ الغلاف ═══
+                Stack(
+                  children: [
+                    TrackArtwork(
+                      songId: t.id,
+                      size: 56,
+                      borderRadius: 10,
                     ),
-                    alignment: Alignment.center,
-                    child: PlayingIndicator(
-                      color: theme.colorScheme.primary,
-                      dotSize: 3,
-                      height: 18,
-                    ),
+                    if (isPlaying)
+                      Positioned(
+                        bottom: 4,
+                        left: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: PlayingIndicator(
+                            color: theme.colorScheme.primary,
+                            dotSize: 2.5,
+                            height: 12,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+
+                const SizedBox(width: 12),
+
+                // ═══ النص ═══
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        t.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight:
+                              isCurrent ? FontWeight.w700 : FontWeight.w600,
+                          color: isCurrent
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${t.artist} • ${t.album}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-            ],
-          ),
-          title: Text(
-            t.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: isCurrent ? theme.colorScheme.primary : null,
-              fontWeight: isCurrent ? FontWeight.w600 : null,
+
+                // ═══ الأزرار ═══
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(
+                    isFav ? Icons.favorite : Icons.favorite_border,
+                    color: isFav ? Colors.redAccent : null,
+                    size: 22,
+                  ),
+                  onPressed: () async {
+                    await FavoritesService.toggleFavorite(t.path);
+                    _loadFavorites();
+                  },
+                ),
+                MediaItemMenu(
+                  path: t.path,
+                  isVideo: false,
+                  songId: t.id,
+                  onChanged: _forceRescan,
+                ),
+              ],
             ),
           ),
-          subtitle: Text(
-            '${t.artist} • ${t.album}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: Icon(
-                  isFav ? Icons.favorite : Icons.favorite_border,
-                  color: isFav ? Colors.redAccent : null,
-                ),
-                onPressed: () async {
-                  await FavoritesService.toggleFavorite(t.path);
-                  _loadFavorites();
-                },
-              ),
-              MediaItemMenu(
-                path: t.path,
-                isVideo: false,
-                songId: t.id,
-                onChanged: () {
-                  _forceRescan();
-                },
-              ),
-            ],
-          ),
-          onTap: () => player.setPlaylist(list, startIndex: i),
         );
       },
     );
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // المجلدات
+  // ═══════════════════════════════════════════════════════════════
   Widget _buildFoldersTab(PlayerProvider player) {
     final Map<String, List<AudioTrack>> folders = {};
     for (final t in _tracks) {
@@ -263,12 +298,22 @@ class _AudioScreenState extends State<AudioScreen>
 
     return ListView.builder(
       itemCount: entries.length,
-      itemExtent: 64,
+      itemExtent: 68,
       itemBuilder: (context, i) {
         final e = entries[i];
         return ListTile(
-          leading: const Icon(Icons.folder),
-          title: Text(e.key),
+          leading: CircleAvatar(
+            backgroundColor:
+                Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+            child: Icon(
+              Icons.folder_rounded,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+          title: Text(
+            e.key,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
           subtitle: Text('${e.value.length} ${context.tr('audio_tracks')}'),
           onTap: () => Navigator.push(
             context,
@@ -291,6 +336,9 @@ class _AudioScreenState extends State<AudioScreen>
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// شاشة مجلد
+// ═══════════════════════════════════════════════════════════════
 class _FolderTracksScreen extends StatelessWidget {
   final String folderName;
   final List<AudioTrack> tracks;
@@ -303,47 +351,90 @@ class _FolderTracksScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final player = Provider.of<PlayerProvider>(context);
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(title: Text(folderName)),
       body: ListView.builder(
         itemCount: tracks.length,
-        itemExtent: 72,
+        itemExtent: 76,
         itemBuilder: (context, i) {
           final t = tracks[i];
-          final isPlaying = player.currentTrack?.id == t.id &&
-              player.player.playing;
-          final theme = Theme.of(context);
+          final isCurrent = player.currentTrack?.id == t.id;
+          final isPlaying = isCurrent && player.player.playing;
 
-          return ListTile(
-            leading: Stack(
-              children: [
-                TrackArtwork(songId: t.id, size: 52),
-                if (isPlaying)
-                  Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      alignment: Alignment.center,
-                      child: PlayingIndicator(
-                        color: theme.colorScheme.primary,
-                        dotSize: 3,
-                        height: 18,
-                      ),
+          return InkWell(
+            onTap: () => player.setPlaylist(tracks, startIndex: i),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Row(
+                children: [
+                  Stack(
+                    children: [
+                      TrackArtwork(songId: t.id, size: 56, borderRadius: 10),
+                      if (isPlaying)
+                        Positioned(
+                          bottom: 4,
+                          left: 4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 4, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: PlayingIndicator(
+                              color: theme.colorScheme.primary,
+                              dotSize: 2.5,
+                              height: 12,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          t.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: isCurrent
+                                ? FontWeight.w700
+                                : FontWeight.w600,
+                            color: isCurrent
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          t.artist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-              ],
+                  MediaItemMenu(
+                    path: t.path,
+                    isVideo: false,
+                    songId: t.id,
+                  ),
+                ],
+              ),
             ),
-            title:
-                Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(t.artist, maxLines: 1),
-            trailing: MediaItemMenu(
-              path: t.path,
-              isVideo: false,
-              songId: t.id,
-            ),
-            onTap: () => player.setPlaylist(tracks, startIndex: i),
           );
         },
       ),

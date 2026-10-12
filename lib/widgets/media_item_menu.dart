@@ -104,24 +104,41 @@ class MediaItemMenu extends StatelessWidget {
     final tDeleted = context.tr('file_deleted');
     final tFailed = context.tr('file_op_failed');
 
-    bool ok;
+    int result;
     if (isVideo) {
-      ok = await FileOpsService.deleteVideo(
+      result = await FileOpsService.deleteVideo(
         assetId: assetId ?? '',
         path: path,
       );
     } else {
-      ok = await FileOpsService.deleteAudio(
+      result = await FileOpsService.deleteAudio(
         songId: songId ?? '',
         path: path,
       );
     }
 
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(ok ? '✅ $tDeleted' : '❌ $tFailed'),
-      ),
-    );
+    final String msg;
+    final bool ok;
+
+    switch (result) {
+      case FileOpsService.resultOk:
+        msg = '✅ $tDeleted';
+        ok = true;
+        break;
+      case FileOpsService.resultFileNotFound:
+        msg = '❌ الملف غير موجود';
+        ok = false;
+        break;
+      case FileOpsService.resultPermissionDenied:
+        msg = '❌ الصلاحية مرفوضة — اذهب للإعدادات → الأذونات → إدارة الملفات';
+        ok = false;
+        break;
+      default:
+        msg = '❌ $tFailed';
+        ok = false;
+    }
+
+    messenger.showSnackBar(SnackBar(content: Text(msg)));
     if (ok) onChanged?.call();
   }
 

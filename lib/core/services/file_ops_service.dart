@@ -2,45 +2,53 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:on_audio_query/on_audio_query.dart';
 import 'package:photo_manager/photo_manager.dart';
 
-/// عمليات الملفات: نقل، نسخ، حذف
+import 'permission_service.dart';
+
 class FileOpsService {
   FileOpsService._();
 
-  /// يفتح منتقي المجلدات
+  static final OnAudioQuery _audioQuery = OnAudioQuery();
+
+  /// نتيجة الحذف
+  static const int resultOk = 0;
+  static const int resultFileNotFound = 1;
+  static const int resultPermissionDenied = 2;
+  static const int resultFailed = 3;
+
+  // ═══════════════════════════════════════════════════════════════
+  // اختيار مجلد
+  // ═══════════════════════════════════════════════════════════════
   static Future<String?> pickDestinationDirectory() async {
     try {
-      final dir = await FilePicker.platform.getDirectoryPath(
+      return await FilePicker.platform.getDirectoryPath(
         dialogTitle: 'اختر مجلد الوجهة',
       );
-      return dir;
     } catch (e) {
       debugPrint('pickDestination error: $e');
       return null;
     }
   }
 
-  /// يبني اسمًا غير مكرر داخل المجلد
-  static Future<String> _uniqueDest(
-    String destDir,
-    String fileName,
-  ) async {
-    final dotIdx = fileName.lastIndexOf('.');
-    final hasExt = dotIdx > 0;
-    final base = hasExt ? fileName.substring(0, dotIdx) : fileName;
-    final ext = hasExt ? fileName.substring(dotIdx) : '';
-
-    var candidate = '$destDir/$fileName';
+  static Future<String> _uniqueDest(String dir, String name) async {
+    final dot = name.lastIndexOf('.');
+    final hasExt = dot > 0;
+    final base = hasExt ? name.substring(0, dot) : name;
+    final ext = hasExt ? name.substring(dot) : '';
+    var candidate = '$dir/$name';
     var n = 1;
     while (await File(candidate).exists()) {
-      candidate = '$destDir/${base}_$n$ext';
+      candidate = '$dir/${base}_$n$ext';
       n++;
     }
     return candidate;
   }
 
-  /// نسخ ملف
+  // ═══════════════════════════════════════════════════════════════
+  // نسخ / نقل
+  // ═══════════════════════════════════════════════════════════════
   static Future<bool> copyFile({
     required String sourcePath,
     required String destDir,
@@ -48,8 +56,7 @@ class FileOpsService {
     try {
       final src = File(sourcePath);
       if (!await src.exists()) return false;
-      final name = sourcePath.split('/').last;
-      final dest = await _uniqueDest(destDir, name);
+      final dest = await _uniqueDest(destDir, sourcePath.split('/').last);
       await src.copy(dest);
       return true;
     } catch (e) {
@@ -58,7 +65,6 @@ class FileOpsService {
     }
   }
 
-  /// نقل ملف (rename أو copy+delete)
   static Future<bool> moveFile({
     required String sourcePath,
     required String destDir,
@@ -66,13 +72,10 @@ class FileOpsService {
     try {
       final src = File(sourcePath);
       if (!await src.exists()) return false;
-      final name = sourcePath.split('/').last;
-      final dest = await _uniqueDest(destDir, name);
-
+      final dest = await _uniqueDest(destDir, sourcePath.split('/').last);
       try {
         await src.rename(dest);
       } on FileSystemException {
-        // أجهزة تخزين مختلفة — copy + delete
         await src.copy(dest);
         await src.delete();
       }
@@ -83,52 +86,103 @@ class FileOpsService {
     }
   }
 
-  /// حذف ملف صوتي — يستخدم حذف مباشر من نظام الملفات.
-  /// MediaStore سيُحدَّث تلقائيًا في الفحص التالي.
-  static Future<bool> deleteAudio({
+  // ═══════════════════════════════════════════════════════════════
+  // حذف صوتي — يعمل من الجهاز فعليًا
+  // ═══════════════════════════════════════════════════════════════
+  static Future<int> deleteAudio({
     required String songId,
     required String path,
   }) async {
     try {
       final f = File(path);
-      if (await f.exists()) {
+      if (!await f.exists()) return resultFileNotFound;
+
+      // 1. جرّب الحذف المباشر أولًا (يعمل مع MANAGE_EXTERNAL_STORAGE)
+      try {
         await f.delete();
-        return true;
+        // 2. حدّث MediaStore
+        await _refreshMediaStore(path);
+        return resultOk;
+      } on FileSystemException catch (e) {
+        if (e.osError?.errorCode == 13 || // EACCES
+            e.message.toLowerCase().contains('permission')) {
+          // حاول طلب الصلاحية
+          final granted = await PermissionService.requestManageStorage();
+          if (granted) {
+            // أعد المحاولة
+            try {
+              await f.delete();
+              await _refreshMediaStore(path);
+              return resultOk;
+            } catch (_) {}
+          }
+          return resultPermissionDenied;
+        }
+        debugPrint('deleteAudio fs error: $e');
       }
-      return false;
+      return resultFailed;
     } catch (e) {
       debugPrint('deleteAudio error: $e');
-      return false;
+      return resultFailed;
     }
   }
 
-  /// حذف فيديو — يستخدم PhotoManager (يدعم Scoped Storage)
-  static Future<bool> deleteVideo({
+  // ═══════════════════════════════════════════════════════════════
+  // حذف فيديو
+  // ═══════════════════════════════════════════════════════════════
+  static Future<int> deleteVideo({
     required String assetId,
     required String path,
   }) async {
     try {
-      // 1. حاول عبر PhotoManager (يعمل على Android 10+)
+      // 1. جرّب PhotoManager أولًا (يدعم Scoped Storage على Android 10+)
       if (assetId.isNotEmpty) {
         try {
           final result =
               await PhotoManager.editor.deleteWithIds([assetId]);
-          if (result.isNotEmpty) return true;
+          if (result.isNotEmpty) return resultOk;
         } catch (e) {
           debugPrint('PhotoManager delete failed: $e');
         }
       }
 
-      // 2. حذف مباشر
+      // 2. جرّب حذف مباشر
       final f = File(path);
-      if (await f.exists()) {
+      if (!await f.exists()) return resultFileNotFound;
+
+      try {
         await f.delete();
-        return true;
+        await _refreshMediaStore(path);
+        return resultOk;
+      } on FileSystemException catch (e) {
+        if (e.osError?.errorCode == 13 ||
+            e.message.toLowerCase().contains('permission')) {
+          final granted = await PermissionService.requestManageStorage();
+          if (granted) {
+            try {
+              await f.delete();
+              await _refreshMediaStore(path);
+              return resultOk;
+            } catch (_) {}
+          }
+          return resultPermissionDenied;
+        }
       }
-      return false;
+      return resultFailed;
     } catch (e) {
       debugPrint('deleteVideo error: $e');
-      return false;
+      return resultFailed;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // تحديث MediaStore (ليختفي الملف من التطبيقات الأخرى)
+  // ═══════════════════════════════════════════════════════════════
+  static Future<void> _refreshMediaStore(String path) async {
+    try {
+      await _audioQuery.scanMedia(path);
+    } catch (e) {
+      debugPrint('scanMedia error: $e');
     }
   }
 }

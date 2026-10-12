@@ -24,25 +24,30 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _startup() async {
-    // ─── 1. ابدأ طلب الصلاحيات في الخلفية — لا يوقف التنقل ───
+    // صلاحيات في الخلفية
     _requestPermissionsInBackground();
 
-    // ─── 2. انتظر AuthStatus يخرج من unknown — بحد أقصى 1.2 ثانية ───
     final auth = Provider.of<AuthProvider>(context, listen: false);
+
+    // ═══ انتظر حتى 8 ثوان — AuthProvider نفسه ينتظر Supabase ═══
     var waited = 0;
-    while (auth.status == AuthStatus.unknown && waited < 12) {
+    while (auth.status == AuthStatus.unknown && waited < 80) {
       await Future.delayed(const Duration(milliseconds: 100));
       waited++;
       if (!mounted) return;
     }
 
     if (!mounted) return;
-    _navigate(auth.status);
+
+    // إن بقي unknown بعد 8s — اذهب للدخول بحذر
+    final s = auth.status == AuthStatus.unknown
+        ? AuthStatus.unauthenticated
+        : auth.status;
+    _navigate(s);
   }
 
   void _requestPermissionsInBackground() {
-    // نستخدم delay بسيط لتفادي منع UI
-    Future.delayed(const Duration(milliseconds: 300), () async {
+    Future.delayed(const Duration(milliseconds: 500), () async {
       if (!mounted) return;
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -59,10 +64,10 @@ class _SplashScreenState extends State<SplashScreen> {
     if (_navigated || !mounted) return;
     _navigated = true;
 
-    final destination = (status == AuthStatus.authenticated ||
-            status == AuthStatus.guest)
-        ? const HomeScreen()
-        : const LoginScreen();
+    final destination =
+        (status == AuthStatus.authenticated || status == AuthStatus.guest)
+            ? const HomeScreen()
+            : const LoginScreen();
 
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => destination),
@@ -95,6 +100,13 @@ class _SplashScreenState extends State<SplashScreen> {
               style: theme.textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1.1,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'مشغل الوسائط الاحترافي المتكامل',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
               ),
             ),
             const SizedBox(height: 36),

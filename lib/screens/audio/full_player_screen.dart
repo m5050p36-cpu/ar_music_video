@@ -209,6 +209,19 @@ class FullPlayerScreen extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  // ═══ زر التقليب العشوائي ═══
+                  IconButton(
+                    icon: Icon(
+                      Icons.shuffle,
+                      color: player.isShuffle
+                          ? theme.colorScheme.primary
+                          : null,
+                    ),
+                    tooltip: 'تقليب عشوائي',
+                    onPressed: player.toggleShuffle,
+                  ),
+
+                  // ═══ زر التكرار ═══
                   IconButton(
                     icon: Column(
                       mainAxisSize: MainAxisSize.min,

@@ -9,6 +9,7 @@ enum AuthStatus { unknown, authenticated, unauthenticated, guest, loading }
 
 class AuthProvider extends ChangeNotifier {
   static const _guestKey = 'is_guest_mode';
+  static const _sessionBackupKey = 'session_backup_v1';
 
   AuthStatus _status = AuthStatus.unknown;
   User? _currentUser;
@@ -42,38 +43,72 @@ class AuthProvider extends ChangeNotifier {
         return;
       }
 
-      // انتظر Supabase بحد أقصى 800ms فقط
+      // ═══ انتظر Supabase حتى 8 ثوان (كافٍ لأي شبكة) ═══
       var waited = 0;
-      while (!SupabaseService.isInitialized && waited < 8) {
+      while (!SupabaseService.isInitialized && waited < 80) {
         await Future.delayed(const Duration(milliseconds: 100));
         waited++;
+        if (_disposed) return;
       }
 
-      if (!SupabaseService.isInitialized) {
-        // لا نُطيل الانتظار — ننتقل لشاشة الدخول فورًا
-        // (في الخلفية: إذا نجح Supabase ووُجدت جلسة، سيُحدَّث تلقائيًا)
-        _setStatus(AuthStatus.unauthenticated);
-        _watchForLateInit();
-        return;
+      // ═══ بعد الجهوزية ═══
+      if (SupabaseService.isInitialized) {
+        // 1. اربط stream التغييرات
+        _authSub = SupabaseService.client.auth.onAuthStateChange.listen(
+          _onAuthChange,
+          onError: (e) => debugPrint('auth stream error: $e'),
+        );
+
+        // 2. اقرأ الجلسة المخزّنة
+        final session = SupabaseService.client.auth.currentSession;
+        if (session?.user != null) {
+          _currentUser = session!.user;
+          await _saveSessionBackup(session.user);
+          await _loadProfile();
+          _setStatus(AuthStatus.authenticated);
+          return;
+        }
+
+        // 3. لا جلسة — لكن هل هناك backup محلي؟
+        final backupEmail = prefs.getString(_sessionBackupKey);
+        if (backupEmail != null && backupEmail.isNotEmpty) {
+          // كان مسجل دخول سابقًا — أعد المحاولة في الخلفية
+          _watchForLateSession();
+        }
       }
 
-      _authSub = SupabaseService.client.auth.onAuthStateChange.listen(
-        _onAuthChange,
-        onError: (e) => debugPrint('auth stream error: $e'),
-      );
+      _setStatus(AuthStatus.unauthenticated);
+    } catch (e) {
+      debugPrint('AuthProvider._initAuth error: $e');
+      _setStatus(AuthStatus.unauthenticated);
+    }
+  }
 
+  /// يراقب جلسة قد تُستعاد بعد دقائق (نادر)
+  void _watchForLateSession() {
+    Future.delayed(const Duration(seconds: 3), () async {
+      if (_disposed || !SupabaseService.isInitialized) return;
       final session = SupabaseService.client.auth.currentSession;
       if (session?.user != null) {
         _currentUser = session!.user;
         await _loadProfile();
         _setStatus(AuthStatus.authenticated);
-      } else {
-        _setStatus(AuthStatus.unauthenticated);
       }
-    } catch (e) {
-      debugPrint('AuthProvider._initAuth error: $e');
-      _setStatus(AuthStatus.unauthenticated);
-    }
+    });
+  }
+
+  Future<void> _saveSessionBackup(User user) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_sessionBackupKey, user.email ?? user.id);
+    } catch (_) {}
+  }
+
+  Future<void> _clearSessionBackup() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_sessionBackupKey);
+    } catch (_) {}
   }
 
   Future<void> _onAuthChange(AuthState state) async {
@@ -82,12 +117,14 @@ class AuthProvider extends ChangeNotifier {
 
     if (session?.user != null) {
       _currentUser = session!.user;
+      await _saveSessionBackup(session.user);
       await _loadProfile();
       _setStatus(AuthStatus.authenticated);
     } else {
       _currentUser = null;
       _profile = null;
       if (state.event == AuthChangeEvent.signedOut) {
+        await _clearSessionBackup();
         _setStatus(AuthStatus.unauthenticated);
       }
     }
@@ -117,7 +154,6 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// ترجمة رسالة Supabase إلى عربي واضح
   String _translateError(Object e) {
     final msg = e.toString().toLowerCase();
 
@@ -126,10 +162,10 @@ class AuthProvider extends ChangeNotifier {
       return 'البريد أو كلمة المرور غير صحيحة';
     }
     if (msg.contains('email not confirmed')) {
-      return 'البريد غير مُفعّل — افتح بريدك واضغط رابط التفعيل، أو أوقف Email Confirmation من Supabase Dashboard';
+      return 'البريد غير مُفعّل — افتح بريدك واضغط رابط التفعيل';
     }
     if (msg.contains('user already registered')) {
-      return 'هذا البريد مُسجّل مسبقًا — سجّل الدخول بدلاً من ذلك';
+      return 'هذا البريد مُسجّل مسبقًا';
     }
     if (msg.contains('password should be at least')) {
       return 'كلمة المرور قصيرة جدًا (6 أحرف على الأقل)';
@@ -138,14 +174,13 @@ class AuthProvider extends ChangeNotifier {
       return 'صيغة البريد غير صحيحة';
     }
     if (msg.contains('email rate limit')) {
-      return 'طلبات كثيرة على هذا البريد — انتظر دقيقة';
+      return 'طلبات كثيرة — انتظر دقيقة';
     }
-    if (msg.contains('signups not allowed')) {
-      return 'التسجيل معطّل من إعدادات Supabase';
-    }
-    if (msg.contains('socket') || msg.contains('connection') ||
-        msg.contains('timeout') || msg.contains('network')) {
-      return 'لا يوجد اتصال بالإنترنت — تحقق من الشبكة';
+    if (msg.contains('socket') ||
+        msg.contains('connection') ||
+        msg.contains('timeout') ||
+        msg.contains('network')) {
+      return 'لا يوجد اتصال بالإنترنت';
     }
     return 'حدث خطأ: $e';
   }
@@ -154,7 +189,7 @@ class AuthProvider extends ChangeNotifier {
     _lastError = null;
 
     if (!SupabaseService.isInitialized) {
-      _lastError = 'لم يتم الاتصال بـ Supabase — تحقق من الإنترنت وأعد فتح التطبيق';
+      _lastError = 'لم يتم الاتصال بـ Supabase';
       _setStatus(AuthStatus.unauthenticated);
       return false;
     }
@@ -169,50 +204,43 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       final res = await SupabaseService.client.auth
-          .signInWithPassword(
-            email: cleanEmail,
-            password: password,
-          )
+          .signInWithPassword(email: cleanEmail, password: password)
           .timeout(const Duration(seconds: 20));
 
-      if (res.user != null) {
-        _currentUser = res.user;
+      final user = res.user;
+      if (user != null) {
+        _currentUser = user;
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool(_guestKey, false);
+        await _saveSessionBackup(user);
         await _loadProfile();
         _setStatus(AuthStatus.authenticated);
         return true;
       }
 
-      _lastError = 'لم يستجب الخادم — أعد المحاولة';
+      _lastError = 'لم يستجب الخادم';
       _setStatus(AuthStatus.unauthenticated);
       return false;
     } on AuthException catch (e) {
       _lastError = _translateError(e.message);
-      debugPrint('signIn AuthException: ${e.message} | status=${e.statusCode}');
       _setStatus(AuthStatus.unauthenticated);
       return false;
     } on TimeoutException {
-      _lastError = 'انتهت مدة الاتصال — تحقق من الإنترنت';
+      _lastError = 'انتهت مدة الاتصال';
       _setStatus(AuthStatus.unauthenticated);
       return false;
     } catch (e) {
       _lastError = _translateError(e);
-      debugPrint('signIn error: $e');
       _setStatus(AuthStatus.unauthenticated);
       return false;
     }
   }
 
-  Future<bool> signUp(
-    String email,
-    String password,
-    String fullName,
-  ) async {
+  Future<bool> signUp(String email, String password, String fullName) async {
     _lastError = null;
 
     if (!SupabaseService.isInitialized) {
-      _lastError = 'لم يتم الاتصال بـ Supabase — تحقق من الإنترنت';
+      _lastError = 'لم يتم الاتصال بـ Supabase';
       _setStatus(AuthStatus.unauthenticated);
       return false;
     }
@@ -244,31 +272,31 @@ class AuthProvider extends ChangeNotifier {
           )
           .timeout(const Duration(seconds: 20));
 
-      // الحالة 1: التسجيل نجح وأعاد session (Email Confirmation مُطفأ)
-      if (res.user != null && res.session != null) {
-        _currentUser = res.user;
+      final user = res.user;
+      final session = res.session;
+
+      if (user != null && session != null) {
+        _currentUser = user;
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool(_guestKey, false);
+        await _saveSessionBackup(user);
         await Future.delayed(const Duration(milliseconds: 600));
         await _loadProfile();
         _setStatus(AuthStatus.authenticated);
         return true;
       }
 
-      // الحالة 2: تم التسجيل لكن Email Confirmation مطلوب
-      if (res.user != null && res.session == null) {
-        _lastError =
-            'تم إنشاء الحساب، لكن Supabase يطلب تأكيد البريد. افتح Dashboard → Authentication → Providers → Email → أوقف "Confirm email"، ثم سجّل الدخول.';
+      if (user != null && session == null) {
+        _lastError = 'تم إنشاء الحساب، لكن Supabase يطلب تأكيد البريد';
         _setStatus(AuthStatus.unauthenticated);
         return false;
       }
 
-      _lastError = 'لم يتم إنشاء الحساب — أعد المحاولة';
+      _lastError = 'لم يتم إنشاء الحساب';
       _setStatus(AuthStatus.unauthenticated);
       return false;
     } on AuthException catch (e) {
       _lastError = _translateError(e.message);
-      debugPrint('signUp AuthException: ${e.message}');
       _setStatus(AuthStatus.unauthenticated);
       return false;
     } on TimeoutException {
@@ -277,7 +305,6 @@ class AuthProvider extends ChangeNotifier {
       return false;
     } catch (e) {
       _lastError = _translateError(e);
-      debugPrint('signUp error: $e');
       _setStatus(AuthStatus.unauthenticated);
       return false;
     }
@@ -299,6 +326,7 @@ class AuthProvider extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_guestKey);
     } catch (_) {}
+    await _clearSessionBackup();
 
     if (SupabaseService.isInitialized) {
       try {
@@ -311,27 +339,6 @@ class AuthProvider extends ChangeNotifier {
     _profile = null;
     _lastError = null;
     _setStatus(AuthStatus.unauthenticated);
-  }
-
-  /// يراقب Supabase إن تأخر عن 800ms — عند الجهوزية يقرأ الجلسة
-  void _watchForLateInit() {
-    Future.delayed(const Duration(seconds: 2), () async {
-      if (_disposed) return;
-      if (!SupabaseService.isInitialized) return;
-
-      _authSub?.cancel();
-      _authSub = SupabaseService.client.auth.onAuthStateChange.listen(
-        _onAuthChange,
-        onError: (e) => debugPrint('auth stream error: $e'),
-      );
-
-      final session = SupabaseService.client.auth.currentSession;
-      if (session?.user != null) {
-        _currentUser = session!.user;
-        await _loadProfile();
-        _setStatus(AuthStatus.authenticated);
-      }
-    });
   }
 
   @override

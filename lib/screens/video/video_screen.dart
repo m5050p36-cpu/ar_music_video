@@ -83,10 +83,18 @@ class _VideoScreenState extends State<VideoScreen>
   }
 
   void _openPlayer(VideoItem v) {
+    // مرّر كل القائمة + الفهرس الحالي لدعم التقليب والتالي/السابق
+    final list = _videos.isEmpty ? <VideoItem>[v] : _videos;
+    final idx = list.indexWhere((x) => x.id == v.id);
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => VideoPlayerScreen(videoPath: v.path, title: v.title),
+        builder: (_) => VideoPlayerScreen(
+          videoPath: v.path,
+          title: v.title,
+          playlist: list,
+          initialIndex: idx >= 0 ? idx : 0,
+        ),
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -198,8 +199,31 @@ class PlayerProvider extends ChangeNotifier {
     }
   }
 
+  /// تتبّع العناصر المشغّلة (لتفادي التكرار في shuffle)
+  final List<int> _shuffleHistory = [];
+  final Random _rand = Random();
+
   void _playNextTrack() {
     if (_playlist.isEmpty) return;
+
+    if (_isShuffle && _playlist.length > 1) {
+      _shuffleHistory.add(_currentIndex);
+      // اختر فهرسًا عشوائيًا لم يُشغَّل مؤخرًا
+      var attempts = 0;
+      int next;
+      do {
+        next = _rand.nextInt(_playlist.length);
+        attempts++;
+      } while (next == _currentIndex && attempts < 10);
+
+      // إن شغّلنا كل العناصر، أفرغ السجل
+      if (_shuffleHistory.length >= _playlist.length) {
+        _shuffleHistory.clear();
+      }
+      playTrackAtIndex(next);
+      return;
+    }
+
     var next = _currentIndex + 1;
     if (next >= _playlist.length) next = 0;
     playTrackAtIndex(next);
@@ -207,6 +231,13 @@ class PlayerProvider extends ChangeNotifier {
 
   void playPrevious() {
     if (_playlist.isEmpty) return;
+
+    if (_isShuffle && _shuffleHistory.isNotEmpty) {
+      final prev = _shuffleHistory.removeLast();
+      playTrackAtIndex(prev);
+      return;
+    }
+
     var prev = _currentIndex - 1;
     if (prev < 0) prev = _playlist.length - 1;
     playTrackAtIndex(prev);
@@ -238,6 +269,7 @@ class PlayerProvider extends ChangeNotifier {
 
   void toggleShuffle() {
     _isShuffle = !_isShuffle;
+    if (!_isShuffle) _shuffleHistory.clear();
     notifyListeners();
   }
 

@@ -1,6 +1,9 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:photo_manager/photo_manager.dart';
+import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 
 import '../../core/localization/app_strings.dart';
 import '../../core/services/media_cache.dart';
@@ -166,7 +169,53 @@ class _VideoScreenState extends State<VideoScreen>
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text(tEmpty, textAlign: TextAlign.center),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.video_library_outlined,
+                          size: 72,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withValues(alpha: 0.3),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          tEmpty,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                        const SizedBox(height: 20),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            try {
+                              await PhotoManager.requestPermissionExtend(
+                                requestOption: const PermissionRequestOption(
+                                  androidPermission: AndroidPermission(
+                                    type: RequestType.common,
+                                    mediaLocation: false,
+                                  ),
+                                ),
+                              );
+                            } catch (_) {}
+                            await MediaCache.clear();
+                            if (mounted) setState(() => _videos = []);
+                            await _backgroundScan();
+                          },
+                          icon: const Icon(Icons.lock_open_rounded),
+                          label: const Text('منح الصلاحيات وإعادة الفحص'),
+                        ),
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          onPressed: () => openAppSettings(),
+                          icon: const Icon(Icons.settings, size: 18),
+                          label: const Text('فتح إعدادات التطبيق'),
+                        ),
+                        const SizedBox(height: 12),
+
+                      ],
+                    ),
                   ),
                 )
               : TabBarView(
@@ -549,6 +598,7 @@ class _LazyThumbState extends State<_LazyThumb> {
 
   @override
   Widget build(BuildContext context) {
+    // 1. من الذاكرة/القرص — الأسرع
     if (_bytes != null) {
       return Image.memory(
         _bytes!,
@@ -558,6 +608,21 @@ class _LazyThumbState extends State<_LazyThumb> {
         cacheWidth: 400,
       );
     }
+
+    // 2. fallback فوري عبر AssetEntityImage إذا كان asset متوفرًا (في نفس الجلسة)
+    final asset = widget.video.asset;
+    if (asset != null) {
+      return AssetEntityImage(
+        asset,
+        isOriginal: false,
+        thumbnailSize: const ThumbnailSize(400, 400),
+        fit: BoxFit.cover,
+        filterQuality: FilterQuality.low,
+        errorBuilder: (_, __, ___) => _fallbackIcon(),
+      );
+    }
+
+    // 3. قيد التحميل
     if (!_loaded) {
       return Container(
         color: Colors.black12,
@@ -569,6 +634,12 @@ class _LazyThumbState extends State<_LazyThumb> {
         ),
       );
     }
+
+    // 4. بدون asset وبدون كاش (فيديو من cache JSON)
+    return _fallbackIcon();
+  }
+
+  Widget _fallbackIcon() {
     return Container(
       color: Colors.black26,
       alignment: Alignment.center,
@@ -581,7 +652,7 @@ class _LazyThumbState extends State<_LazyThumb> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ═
 // شاشة ألبوم
 // ═══════════════════════════════════════════════════════════════
 class _AlbumVideosScreen extends StatelessWidget {

@@ -11,9 +11,9 @@ class MediaCache {
   MediaCache._();
 
   static const _audioKey = 'cache_audio_list_v2';
-  static const _videoKey = 'cache_video_list_v2';
+  static const _videoKey = 'cache_video_list_v3';
   static const _audioTsKey = 'cache_audio_ts_v2';
-  static const _videoTsKey = 'cache_video_ts_v2';
+  static const _videoTsKey = 'cache_video_ts_v3';
 
   /// مدة صلاحية الكاش — بعدها نُعيد الفحص
   static const Duration ttl = Duration(hours: 6);

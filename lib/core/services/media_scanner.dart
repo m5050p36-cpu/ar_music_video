@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:on_audio_query/on_audio_query.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import '../../models/audio_track.dart';
@@ -9,8 +10,6 @@ class MediaScanner {
   MediaScanner._();
 
   static final OnAudioQuery _audioQuery = OnAudioQuery();
-
-  /// عدد المهام المتوازية عند قراءة مسارات الملفات
   static const int _pathWorkers = 12;
 
   // ═══════════════════════ Audio ═══════════════════════
@@ -59,11 +58,38 @@ class MediaScanner {
 
   // ═══════════════════════ Video ═══════════════════════
 
-  /// فحص سريع — بدون توليد صور مصغرة.
-  /// الصور تُولَّد lazy في الواجهة عبر `VideoThumbnailCache`.
-  static Future<List<VideoItem>> scanVideos() async {
+  /// يطلب صلاحية الفيديو عبر قناتين (permission_handler + photo_manager)
+  /// يُرجع true إن كانت ممنوحة
+  static Future<bool> ensureVideoPermission() async {
+    // ─── 1. permission_handler أولًا ───
     try {
-      final permission = await PhotoManager.requestPermissionExtend(
+      // Android 13+
+      final videosStatus = await Permission.videos.status;
+      debugPrint('📹 videos permission status: $videosStatus');
+
+      if (!videosStatus.isGranted) {
+        final result = await Permission.videos.request();
+        debugPrint('📹 after request: $result');
+        if (result.isPermanentlyDenied) {
+          debugPrint('📹 PERMANENTLY DENIED — user must go to Settings');
+          return false;
+        }
+      }
+
+      // للتوافق مع Android 12 وأقل
+      if (!await Permission.videos.isGranted) {
+        final storage = await Permission.storage.status;
+        if (!storage.isGranted) {
+          await Permission.storage.request();
+        }
+      }
+    } catch (e) {
+      debugPrint('permission_handler error: $e');
+    }
+
+    // ─── 2. photo_manager ───
+    try {
+      final ps = await PhotoManager.requestPermissionExtend(
         requestOption: const PermissionRequestOption(
           androidPermission: AndroidPermission(
             type: RequestType.common,
@@ -71,33 +97,74 @@ class MediaScanner {
           ),
         ),
       );
-      if (!permission.isAuth) return [];
+      debugPrint('📹 PhotoManager state: $ps');
+      return ps.isAuth || ps.hasAccess;
+    } catch (e) {
+      debugPrint('PhotoManager request error: $e');
+      return false;
+    }
+  }
 
+  static Future<List<VideoItem>> scanVideos() async {
+    try {
+      // ═══ طلب الصلاحية أولًا ═══
+      final hasPerm = await ensureVideoPermission();
+      if (!hasPerm) {
+        debugPrint('❌ Video permission denied');
+        return [];
+      }
+
+      // ═══ جلب الألبومات ═══
       final albums = await PhotoManager.getAssetPathList(
         type: RequestType.video,
         onlyAll: true,
         filterOption: FilterOptionGroup(
           videoOption: const FilterOption(
-            sizeConstraint: SizeConstraint(minWidth: 100, minHeight: 100),
+            sizeConstraint: SizeConstraint(minWidth: 50, minHeight: 50),
           ),
           orders: [
             const OrderOption(type: OrderOptionType.createDate, asc: false),
           ],
         ),
       );
-      if (albums.isEmpty) return [];
 
-      final allVideos = albums.first;
-      final assets = await allVideos.getAssetListRange(start: 0, end: 2000);
+      debugPrint('📹 Albums found: ${albums.length}');
+      if (albums.isEmpty) {
+        debugPrint('❌ No albums — trying without filters');
+        // جرّب بدون filter
+        final fallback = await PhotoManager.getAssetPathList(
+          type: RequestType.video,
+          onlyAll: true,
+        );
+        debugPrint('📹 Fallback albums: ${fallback.length}');
+        if (fallback.isEmpty) return [];
+        return await _scanFromAlbum(fallback.first);
+      }
 
-      return await _buildItems(assets);
-    } catch (e) {
+      return await _scanFromAlbum(albums.first);
+    } catch (e, st) {
       debugPrint('scanVideos error: $e');
+      if (kDebugMode) debugPrintStack(stackTrace: st);
       return [];
     }
   }
 
-  /// بناء قائمة VideoItem بمهام متوازية (12 ملفًا في نفس الوقت)
+  static Future<List<VideoItem>> _scanFromAlbum(AssetPathEntity album) async {
+    try {
+      final count = await album.assetCountAsync;
+      debugPrint('📹 Total videos in album: $count');
+      if (count == 0) return [];
+
+      final assets = await album.getAssetListRange(start: 0, end: count);
+      debugPrint('📹 Loaded ${assets.length} assets');
+
+      return await _buildItems(assets);
+    } catch (e) {
+      debugPrint('_scanFromAlbum error: $e');
+      return [];
+    }
+  }
+
   static Future<List<VideoItem>> _buildItems(
     List<AssetEntity> assets,
   ) async {
@@ -109,9 +176,7 @@ class MediaScanner {
           : assets.length;
       final batch = assets.sublist(i, end);
 
-      final batchItems = await Future.wait(
-        batch.map(_buildOne),
-      );
+      final batchItems = await Future.wait(batch.map(_buildOne));
       items.addAll(batchItems.whereType<VideoItem>());
     }
 
@@ -139,7 +204,7 @@ class MediaScanner {
         path: file.path,
         folderName: folder,
         duration: Duration(seconds: a.duration),
-        thumbnailPath: null, // يُملأ عند العرض
+        thumbnailPath: null,
         asset: a,
       );
     } catch (e) {

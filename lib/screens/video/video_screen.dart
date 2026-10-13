@@ -72,7 +72,12 @@ class _VideoScreenState extends State<VideoScreen>
     if (_isScanning) return;
     if (mounted) setState(() => _isScanning = true);
 
+    // ═══ اطلب الصلاحيات أولًا ═══
+    final hasPerm = await MediaScanner.ensureVideoPermission();
+    debugPrint('🎬 Video permission: $hasPerm');
+
     final fresh = await MediaScanner.scanVideos();
+    debugPrint('🎬 Videos found: ${fresh.length}');
 
     if (!mounted) return;
     if (fresh.isNotEmpty) {
@@ -189,16 +194,41 @@ class _VideoScreenState extends State<VideoScreen>
                         const SizedBox(height: 20),
                         ElevatedButton.icon(
                           onPressed: () async {
-                            try {
-                              await PhotoManager.requestPermissionExtend(
-                                requestOption: const PermissionRequestOption(
-                                  androidPermission: AndroidPermission(
-                                    type: RequestType.common,
-                                    mediaLocation: false,
+                            // 1. طلب الصلاحية
+                            final granted =
+                                await MediaScanner.ensureVideoPermission();
+
+                            // 2. إن لم تُمنح — افتح الإعدادات
+                            if (!granted) {
+                              if (!context.mounted) return;
+                              final go = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('صلاحية مطلوبة'),
+                                  content: const Text(
+                                    'لأجل عرض الفيديوهات في جهازك، نحتاج صلاحية الوصول.\n\n'
+                                    'افتح الإعدادات → الأذونات → الفيديو → السماح.\n\n'
+                                    'ثم اضغط "منح الصلاحيات" مرة أخرى.',
                                   ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx, false),
+                                      child: const Text('لاحقًا'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      child: const Text('فتح الإعدادات'),
+                                    ),
+                                  ],
                                 ),
                               );
-                            } catch (_) {}
+                              if (go == true) {
+                                await openAppSettings();
+                                return;
+                              }
+                            }
+
+                            // 3. أعد الفحص
                             await MediaCache.clear();
                             if (mounted) setState(() => _videos = []);
                             await _backgroundScan();

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
@@ -16,11 +15,9 @@ class PlayerProvider extends ChangeNotifier {
   final AudioPlayer _player = AudioPlayer();
   final List<AudioTrack> _playlist = [];
   final List<int> _shuffleHistory = [];
-  final Random _rand = Random();
   int _currentIndex = -1;
 
   CustomLoopMode _loopMode = CustomLoopMode.repeatAll;
-  int _currentTrackRepeatCounter = 0;
   bool _isShuffle = false;
   double _speed = 1.0;
 
@@ -37,6 +34,7 @@ class PlayerProvider extends ChangeNotifier {
 
   StreamSubscription<PlayerState>? _stateSub;
   StreamSubscription<Duration>? _positionSub;
+  StreamSubscription<int?>? _indexSub;
 
   AudioPlayer get player => _player;
   List<AudioTrack> get playlist => List.unmodifiable(_playlist);
@@ -62,10 +60,25 @@ class PlayerProvider extends ChangeNotifier {
   void _initListeners() {
     _stateSub = _player.playerStateStream.listen((state) {
       if (_disposed) return;
-      if (state.processingState == ProcessingState.completed) {
-        _handleTrackCompletion();
-      }
       notifyListeners();
+    });
+
+    // ═══ متابعة الفهرس — يعمل مع الإشعار ═══
+    _indexSub = _player.currentIndexStream.listen((idx) {
+      if (_disposed || idx == null) return;
+      if (idx != _currentIndex) {
+        _currentIndex = idx;
+        _lastPositionSave = DateTime.now();
+
+        final track = currentTrack;
+        if (track != null) {
+          WidgetService.updateNowPlaying(
+            title: track.title,
+            subtitle: track.artist,
+          );
+        }
+        notifyListeners();
+      }
     });
 
     _positionSub = _player.positionStream.listen((position) {
@@ -116,7 +129,6 @@ class PlayerProvider extends ChangeNotifier {
       if (millibels <= 0) {
         await VolumeBoostService.disable();
       } else {
-        // just_audio لا يكشف audioSessionId — نستخدم 0 (global mix)
         await VolumeBoostService.enable(
           sessionId: 0,
           millibels: millibels,
@@ -127,152 +139,136 @@ class PlayerProvider extends ChangeNotifier {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // setPlaylist — يستخدم ConcatenatingAudioSource
+  // ═══════════════════════════════════════════════════════════════
   Future<void> setPlaylist(
     List<AudioTrack> tracks, {
     int startIndex = 0,
   }) async {
+    if (tracks.isEmpty) return;
+
     _playlist
       ..clear()
       ..addAll(tracks);
     _currentIndex = startIndex.clamp(0, _playlist.length - 1);
     _shuffleHistory.clear();
-    if (_playlist.isNotEmpty) {
-      await playTrackAtIndex(_currentIndex);
-    }
-  }
-
-  Future<void> playTrackAtIndex(int index) async {
-    if (index < 0 || index >= _playlist.length) return;
-    _currentIndex = index;
-    _currentTrackRepeatCounter = 0;
     _lastPlaybackError = null;
 
-    final track = _playlist[index];
-
     try {
-      final exists = await Future.value(true); // skip fs check for perf
-      if (!exists) return;
-    } catch (_) {}
+      // ═══ ابنِ قائمة المصادر — كل الأغاني ═══
+      final sources = _playlist.map((track) {
+        final mediaItem = MediaItem(
+          id: track.id,
+          album: track.album.isNotEmpty ? track.album : 'ألبوم عام',
+          title: track.title.isNotEmpty ? track.title : 'مقطع صوتي',
+          artist: track.artist.isNotEmpty ? track.artist : 'فنان غير معروف',
+        );
 
-    try {
-      final mediaItem = MediaItem(
-        id: track.id,
-        album: track.album.isNotEmpty ? track.album : 'ألبوم عام',
-        title: track.title.isNotEmpty ? track.title : 'مقطع صوتي',
-        artist: track.artist.isNotEmpty ? track.artist : 'فنان غير معروف',
+        return AudioSource.file(
+          track.path,
+          tag: mediaItem,
+        );
+      }).toList();
+
+      // ═══ ConcatenatingAudioSource ═══
+      final playlistSource = ConcatenatingAudioSource(
+        children: sources,
+        useLazyPreparation: true,
       );
 
+      // ═══ حمّل الأغنية الأولى فقط (lazy) ═══
       await _player.setAudioSource(
-        AudioSource.file(track.path, tag: mediaItem),
+        playlistSource,
+        initialIndex: _currentIndex,
+        initialPosition: Duration.zero,
       );
+
       await _player.setSpeed(_speed);
 
+      // ═══ استعادة آخر موضع للأغنية الأولى ═══
       try {
         final prefs = await SharedPreferences.getInstance();
-        final lastSecs = prefs.getInt('last_pos_${track.id}') ?? 0;
+        final lastSecs =
+            prefs.getInt('last_pos_${_playlist[_currentIndex].id}') ?? 0;
         if (lastSecs > 0) {
           await _player.seek(Duration(seconds: lastSecs));
         }
       } catch (_) {}
 
+      // ═══ التكرار ═══
+      _applyLoopMode();
+
       await _player.play();
       await _applyBoost();
 
-      WidgetService.updateNowPlaying(
-        title: track.title,
-        subtitle: track.artist,
-      );
+      final track = currentTrack;
+      if (track != null) {
+        WidgetService.updateNowPlaying(
+          title: track.title,
+          subtitle: track.artist,
+        );
+      }
 
       notifyListeners();
     } catch (e, st) {
       _lastPlaybackError = 'خطأ في التشغيل: $e';
-      debugPrint('❌ playTrackAtIndex error: $e');
+      debugPrint('❌ setPlaylist error: $e');
       if (kDebugMode) debugPrintStack(stackTrace: st);
       notifyListeners();
     }
   }
 
-  void _handleTrackCompletion() {
-    switch (_loopMode) {
-      case CustomLoopMode.repeatOnce:
-        if (_currentTrackRepeatCounter < 1) {
-          _currentTrackRepeatCounter++;
-          _player.seek(Duration.zero);
-          _player.play();
-        } else {
-          _playNextTrack();
-        }
-        break;
-      case CustomLoopMode.repeatTwice:
-        if (_currentTrackRepeatCounter < 2) {
-          _currentTrackRepeatCounter++;
-          _player.seek(Duration.zero);
-          _player.play();
-        } else {
-          _playNextTrack();
-        }
-        break;
-      case CustomLoopMode.repeatThrice:
-        if (_currentTrackRepeatCounter < 3) {
-          _currentTrackRepeatCounter++;
-          _player.seek(Duration.zero);
-          _player.play();
-        } else {
-          _playNextTrack();
-        }
-        break;
-      case CustomLoopMode.repeatAll:
-        _playNextTrack();
-        break;
-      case CustomLoopMode.none:
-        if (_currentIndex < _playlist.length - 1) {
-          _playNextTrack();
-        } else {
-          _player.stop();
-        }
-        break;
+  Future<void> playTrackAtIndex(int index) async {
+    if (index < 0 || index >= _playlist.length) return;
+    if (index == _currentIndex && _player.playing) return;
+
+    try {
+      // إذا كانت القائمة محمّلة، انتقل فقط
+      if (_player.audioSource is ConcatenatingAudioSource) {
+        await _player.seek(Duration.zero, index: index);
+        if (!_player.playing) await _player.play();
+      } else {
+        // أعد بناء القائمة
+        await setPlaylist(_playlist, startIndex: index);
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('playTrackAtIndex error: $e');
     }
   }
 
-  void _playNextTrack() {
-    if (_playlist.isEmpty) return;
-
-    if (_isShuffle && _playlist.length > 1) {
-      _shuffleHistory.add(_currentIndex);
-      var attempts = 0;
-      int next;
-      do {
-        next = _rand.nextInt(_playlist.length);
-        attempts++;
-      } while (next == _currentIndex && attempts < 10);
-
-      if (_shuffleHistory.length >= _playlist.length) {
-        _shuffleHistory.clear();
-      }
-      playTrackAtIndex(next);
-      return;
+  void _applyLoopMode() {
+    switch (_loopMode) {
+      case CustomLoopMode.none:
+        _player.setLoopMode(LoopMode.off);
+        break;
+      case CustomLoopMode.repeatOnce:
+      case CustomLoopMode.repeatTwice:
+      case CustomLoopMode.repeatThrice:
+        _player.setLoopMode(LoopMode.one);
+        break;
+      case CustomLoopMode.repeatAll:
+        _player.setLoopMode(LoopMode.all);
+        break;
     }
-
-    var next = _currentIndex + 1;
-    if (next >= _playlist.length) next = 0;
-    playTrackAtIndex(next);
   }
 
   void playPrevious() {
-    if (_playlist.isEmpty) return;
-
-    if (_isShuffle && _shuffleHistory.isNotEmpty) {
-      final prev = _shuffleHistory.removeLast();
-      playTrackAtIndex(prev);
-      return;
+    if (_player.hasPrevious) {
+      _player.seekToPrevious();
+    } else if (_playlist.isNotEmpty) {
+      _player.seek(Duration.zero, index: _playlist.length - 1);
     }
-
-    var prev = _currentIndex - 1;
-    if (prev < 0) prev = _playlist.length - 1;
-    playTrackAtIndex(prev);
   }
 
-  void playNext() => _playNextTrack();
+  void playNext() {
+    if (_player.hasNext) {
+      _player.seekToNext();
+    } else if (_playlist.isNotEmpty) {
+      _player.seek(Duration.zero, index: 0);
+    }
+  }
 
   void togglePlayPause() {
     if (_player.playing) {
@@ -292,13 +288,14 @@ class PlayerProvider extends ChangeNotifier {
   void toggleLoopMode() {
     final nextIndex = (_loopMode.index + 1) % CustomLoopMode.values.length;
     _loopMode = CustomLoopMode.values[nextIndex];
-    _currentTrackRepeatCounter = 0;
+    _applyLoopMode();
     notifyListeners();
   }
 
   void toggleShuffle() {
     _isShuffle = !_isShuffle;
     if (!_isShuffle) _shuffleHistory.clear();
+    _player.setShuffleModeEnabled(_isShuffle);
     notifyListeners();
   }
 
@@ -353,6 +350,7 @@ class PlayerProvider extends ChangeNotifier {
     _disposed = true;
     _stateSub?.cancel();
     _positionSub?.cancel();
+    _indexSub?.cancel();
     _abCheckTimer?.cancel();
     _sleepTimer?.cancel();
     VolumeBoostService.disable();

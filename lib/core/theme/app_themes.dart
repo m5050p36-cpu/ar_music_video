@@ -1,14 +1,21 @@
 import 'package:flutter/material.dart';
 
-/// 7 ثيمات للتطبيق
+/// 10 ثيمات — داكنة + فاتحة
 enum AppThemeMode {
+  // داكنة
   dark('داكن', Icons.dark_mode),
-  light('فاتح', Icons.light_mode),
   amoled('AMOLED', Icons.brightness_2),
   ocean('محيط', Icons.water),
   sunset('غروب', Icons.wb_twilight),
   forest('غابة', Icons.forest),
-  rose('وردي', Icons.local_florist);
+  rose('وردي', Icons.local_florist),
+
+  // فاتحة
+  light('فاتح', Icons.light_mode),
+  lightMint('نعناع', Icons.eco),
+  lightSky('سماء', Icons.cloud),
+  lightPeach('خوخ', Icons.wb_sunny),
+  lightLavender('لافندر', Icons.spa);
 
   final String labelAr;
   final IconData icon;
@@ -21,6 +28,9 @@ enum AppThemeMode {
       orElse: () => AppThemeMode.dark,
     );
   }
+
+  bool get isLight =>
+      index >= AppThemeMode.light.index;
 }
 
 class AppThemes {
@@ -28,17 +38,35 @@ class AppThemes {
 
   static ThemeData get(AppThemeMode mode) {
     switch (mode) {
-      case AppThemeMode.dark:    return _build(_paletteDark);
-      case AppThemeMode.light:   return _build(_paletteLight);
-      case AppThemeMode.amoled:  return _build(_paletteAmoled);
-      case AppThemeMode.ocean:   return _build(_paletteOcean);
-      case AppThemeMode.sunset:  return _build(_paletteSunset);
-      case AppThemeMode.forest:  return _build(_paletteForest);
-      case AppThemeMode.rose:    return _build(_paletteRose);
+      // داكنة
+      case AppThemeMode.dark:
+        return _build(_paletteDark);
+      case AppThemeMode.amoled:
+        return _build(_paletteAmoled);
+      case AppThemeMode.ocean:
+        return _build(_paletteOcean);
+      case AppThemeMode.sunset:
+        return _build(_paletteSunset);
+      case AppThemeMode.forest:
+        return _build(_paletteForest);
+      case AppThemeMode.rose:
+        return _build(_paletteRose);
+
+      // فاتحة
+      case AppThemeMode.light:
+        return _build(_paletteLight);
+      case AppThemeMode.lightMint:
+        return _build(_paletteLightMint);
+      case AppThemeMode.lightSky:
+        return _build(_paletteLightSky);
+      case AppThemeMode.lightPeach:
+        return _build(_paletteLightPeach);
+      case AppThemeMode.lightLavender:
+        return _build(_paletteLightLavender);
     }
   }
 
-  // ─── لوحات الألوان ────────────────────────────────────
+  // ═══════════════ داكنة ═══════════════
 
   static const _paletteDark = _Palette(
     brightness: Brightness.dark,
@@ -50,18 +78,6 @@ class AppThemes {
     error: Color(0xFFCF6679),
     onPrimary: Colors.white,
     onSurface: Color(0xFFE8E8E8),
-  );
-
-  static const _paletteLight = _Palette(
-    brightness: Brightness.light,
-    primary: Color(0xFF1DB954),
-    secondary: Color(0xFF169C46),
-    background: Color(0xFFFAFAFA),
-    surface: Color(0xFFFFFFFF),
-    surfaceAlt: Color(0xFFF0F0F0),
-    error: Color(0xFFB3261E),
-    onPrimary: Colors.white,
-    onSurface: Color(0xFF1A1A1A),
   );
 
   static const _paletteAmoled = _Palette(
@@ -124,7 +140,69 @@ class AppThemes {
     onSurface: Color(0xFFFCE4EC),
   );
 
-  // ─── باني الثيم ───────────────────────────────────────
+  // ═══════════════ فاتحة ═══════════════
+
+  static const _paletteLight = _Palette(
+    brightness: Brightness.light,
+    primary: Color(0xFF1DB954),
+    secondary: Color(0xFF169C46),
+    background: Color(0xFFF7F8FA),
+    surface: Color(0xFFFFFFFF),
+    surfaceAlt: Color(0xFFF0F1F3),
+    error: Color(0xFFB3261E),
+    onPrimary: Colors.white,
+    onSurface: Color(0xFF1A1A1A),
+  );
+
+  static const _paletteLightMint = _Palette(
+    brightness: Brightness.light,
+    primary: Color(0xFF00897B),
+    secondary: Color(0xFF26A69A),
+    background: Color(0xFFF1F8F6),
+    surface: Color(0xFFFFFFFF),
+    surfaceAlt: Color(0xFFE0F2F1),
+    error: Color(0xFFC62828),
+    onPrimary: Colors.white,
+    onSurface: Color(0xFF1B2E2C),
+  );
+
+  static const _paletteLightSky = _Palette(
+    brightness: Brightness.light,
+    primary: Color(0xFF0288D1),
+    secondary: Color(0xFF039BE5),
+    background: Color(0xFFF0F7FC),
+    surface: Color(0xFFFFFFFF),
+    surfaceAlt: Color(0xFFE1F1FA),
+    error: Color(0xFFC62828),
+    onPrimary: Colors.white,
+    onSurface: Color(0xFF0F2A3D),
+  );
+
+  static const _paletteLightPeach = _Palette(
+    brightness: Brightness.light,
+    primary: Color(0xFFE64A19),
+    secondary: Color(0xFFFF7043),
+    background: Color(0xFFFFF8F5),
+    surface: Color(0xFFFFFFFF),
+    surfaceAlt: Color(0xFFFFECE3),
+    error: Color(0xFFC62828),
+    onPrimary: Colors.white,
+    onSurface: Color(0xFF3B1F14),
+  );
+
+  static const _paletteLightLavender = _Palette(
+    brightness: Brightness.light,
+    primary: Color(0xFF7E57C2),
+    secondary: Color(0xFF9575CD),
+    background: Color(0xFFF7F5FB),
+    surface: Color(0xFFFFFFFF),
+    surfaceAlt: Color(0xFFEDE7F6),
+    error: Color(0xFFC62828),
+    onPrimary: Colors.white,
+    onSurface: Color(0xFF221A38),
+  );
+
+  // ═══════════════ باني الثيم ═══════════════
 
   static ThemeData _build(_Palette p) {
     final scheme = ColorScheme(
@@ -169,7 +247,7 @@ class AppThemes {
       ),
       cardTheme: CardThemeData(
         color: p.surface,
-        elevation: 0,
+        elevation: p.brightness == Brightness.light ? 1 : 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
@@ -208,7 +286,8 @@ class AppThemes {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: p.surfaceAlt,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
@@ -256,8 +335,12 @@ class AppThemes {
         ),
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: p.surfaceAlt,
-        contentTextStyle: TextStyle(color: p.onSurface),
+        backgroundColor: p.brightness == Brightness.dark
+            ? p.surfaceAlt
+            : p.onSurface,
+        contentTextStyle: TextStyle(
+          color: p.brightness == Brightness.dark ? p.onSurface : p.surface,
+        ),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),

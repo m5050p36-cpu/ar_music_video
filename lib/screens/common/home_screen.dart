@@ -614,9 +614,24 @@ class _BannerPagerState extends State<_BannerPager> {
     _startAutoPlay();
   }
 
+  void _goTo(int delta) {
+    if (widget.banners.isEmpty) return;
+    final next = (_index + delta + widget.banners.length) %
+        widget.banners.length;
+    if (_pageController.hasClients) {
+      _pageController.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isRtl = Directionality.of(context) == TextDirection.rtl;
+    final showArrows = widget.banners.length > 1;
 
     return Stack(
       fit: StackFit.expand,
@@ -645,7 +660,8 @@ class _BannerPagerState extends State<_BannerPager> {
                           theme.colorScheme.primary.withValues(alpha: 0.15),
                     ),
                     errorWidget: (_, __, ___) => Container(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                      color:
+                          theme.colorScheme.primary.withValues(alpha: 0.3),
                       child: const Center(
                         child: Icon(Icons.image, size: 42),
                       ),
@@ -682,6 +698,40 @@ class _BannerPagerState extends State<_BannerPager> {
             );
           },
         ),
+
+        // ═══ سهم يسار ═══
+        if (showArrows)
+          Positioned(
+            left: 8,
+            top: 0,
+            bottom: 20,
+            child: Center(
+              child: _NavArrow(
+                icon: isRtl
+                    ? Icons.chevron_right_rounded
+                    : Icons.chevron_left_rounded,
+                onTap: () => _goTo(-1),
+              ),
+            ),
+          ),
+
+        // ═══ سهم يمين ═══
+        if (showArrows)
+          Positioned(
+            right: 8,
+            top: 0,
+            bottom: 20,
+            child: Center(
+              child: _NavArrow(
+                icon: isRtl
+                    ? Icons.chevron_left_rounded
+                    : Icons.chevron_right_rounded,
+                onTap: () => _goTo(1),
+              ),
+            ),
+          ),
+
+        // ═══ مؤشرات النقاط ═══
         if (widget.banners.length > 1)
           Positioned(
             bottom: 8,
@@ -707,6 +757,37 @@ class _BannerPagerState extends State<_BannerPager> {
             ),
           ),
       ],
+    );
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// سهم تنقل دائري
+// ═══════════════════════════════════════════════════════════════
+class _NavArrow extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _NavArrow({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.45),
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(
+            icon,
+            color: Colors.white,
+            size: 26,
+          ),
+        ),
+      ),
     );
   }
 }

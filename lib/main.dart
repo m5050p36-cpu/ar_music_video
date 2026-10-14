@@ -73,7 +73,9 @@ class ARMusicApp extends StatelessWidget {
             debugShowCheckedModeBanner: false,
             theme: themeProvider.currentTheme,
             darkTheme: themeProvider.currentTheme,
-            themeMode: ThemeMode.dark,
+            themeMode: themeProvider.mode.isLight
+                ? ThemeMode.light
+                : ThemeMode.dark,
             locale: langProvider.currentLocale,
             supportedLocales: const [Locale('ar'), Locale('en')],
             localizationsDelegates: langProvider.localizationsDelegates,

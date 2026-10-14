@@ -17,6 +17,7 @@ import '../admin/admin_panel_screen.dart';
 import '../audio/audio_screen.dart';
 import '../video/video_screen.dart';
 import 'about_screen.dart';
+import 'custom_theme_screen.dart';
 import 'coming_soon_screen.dart';
 import 'login_screen.dart';
 import 'privacy_policy_screen.dart';
@@ -216,24 +217,96 @@ class _HomeScreenState extends State<HomeScreen>
                   tooltip: 'Language / اللغة',
                   onPressed: () => langProvider.toggleLanguage(),
                 ),
-                PopupMenuButton<AppThemeMode>(
+                PopupMenuButton<String>(
                   icon: const Icon(Icons.palette_outlined),
                   tooltip: 'Theme',
-                  onSelected: (mode) => themeProvider.setTheme(mode),
-                  itemBuilder: (_) => AppThemeMode.values
-                      .map(
-                        (mode) => PopupMenuItem(
-                          value: mode,
-                          child: Row(
-                            children: [
-                              Icon(mode.icon, size: 18),
-                              const SizedBox(width: 8),
-                              Text(mode.labelAr),
-                            ],
+                  onSelected: (value) {
+                    if (value == '__custom__') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const CustomThemeScreen(),
+                        ),
+                      );
+                    } else {
+                      final mode = AppThemeMode.values.firstWhere(
+                        (m) => m.name == value,
+                        orElse: () => AppThemeMode.dark,
+                      );
+                      themeProvider.setTheme(mode);
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    ...AppThemeMode.values
+                        .where((m) => m != AppThemeMode.custom)
+                        .map(
+                          (mode) => PopupMenuItem<String>(
+                            value: mode.name,
+                            child: Row(
+                              children: [
+                                Icon(
+                                  mode.icon,
+                                  size: 18,
+                                  color: themeProvider.mode == mode
+                                      ? Theme.of(context).colorScheme.primary
+                                      : null,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  mode.labelAr,
+                                  style: TextStyle(
+                                    fontWeight: themeProvider.mode == mode
+                                        ? FontWeight.bold
+                                        : null,
+                                  ),
+                                ),
+                                if (themeProvider.mode == mode) ...[
+                                  const Spacer(),
+                                  Icon(
+                                    Icons.check,
+                                    size: 16,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                  ),
+                                ],
+                              ],
+                            ),
                           ),
                         ),
-                      )
-                      .toList(),
+                    const PopupMenuDivider(),
+                    PopupMenuItem<String>(
+                      value: '__custom__',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.tune,
+                            size: 18,
+                            color: themeProvider.mode == AppThemeMode.custom
+                                ? Theme.of(context).colorScheme.primary
+                                : null,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'تخصيص الألوان',
+                            style: TextStyle(
+                              fontWeight:
+                                  themeProvider.mode == AppThemeMode.custom
+                                      ? FontWeight.bold
+                                      : null,
+                            ),
+                          ),
+                          if (themeProvider.mode == AppThemeMode.custom) ...[
+                            const Spacer(),
+                            Icon(
+                              Icons.check,
+                              size: 16,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ],
               flexibleSpace: FlexibleSpaceBar(

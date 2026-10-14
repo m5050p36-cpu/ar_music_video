@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// 10 ثيمات — داكنة + فاتحة
+import 'custom_theme.dart';
+
+/// 12 ثيمات — داكنة + فاتحة + مخصص
 enum AppThemeMode {
   // داكنة
   dark('داكن', Icons.dark_mode),
@@ -15,7 +17,10 @@ enum AppThemeMode {
   lightMint('نعناع', Icons.eco),
   lightSky('سماء', Icons.cloud),
   lightPeach('خوخ', Icons.wb_sunny),
-  lightLavender('لافندر', Icons.spa);
+  lightLavender('لافندر', Icons.spa),
+
+  // مخصص
+  custom('مخصص', Icons.tune);
 
   final String labelAr;
   final IconData icon;
@@ -30,13 +35,22 @@ enum AppThemeMode {
   }
 
   bool get isLight =>
-      index >= AppThemeMode.light.index;
+      this == AppThemeMode.light ||
+      this == AppThemeMode.lightMint ||
+      this == AppThemeMode.lightSky ||
+      this == AppThemeMode.lightPeach ||
+      this == AppThemeMode.lightLavender;
 }
 
 class AppThemes {
   AppThemes._();
 
-  static ThemeData get(AppThemeMode mode) {
+  static ThemeData get(AppThemeMode mode, {CustomTheme? custom}) {
+    // في حال الثيم المخصص
+    if (mode == AppThemeMode.custom && custom != null) {
+      return _buildCustom(custom);
+    }
+
     switch (mode) {
       // داكنة
       case AppThemeMode.dark:
@@ -63,6 +77,10 @@ class AppThemes {
         return _build(_paletteLightPeach);
       case AppThemeMode.lightLavender:
         return _build(_paletteLightLavender);
+
+      // مخصص — fallback داكن إن لم يوجد custom
+      case AppThemeMode.custom:
+        return _build(_paletteDark);
     }
   }
 
@@ -202,7 +220,7 @@ class AppThemes {
     onSurface: Color(0xFF221A38),
   );
 
-  // ═══════════════ باني الثيم ═══════════════
+  // ═══════════════ باني الثيم العادي ═══════════════
 
   static ThemeData _build(_Palette p) {
     final scheme = ColorScheme(
@@ -335,9 +353,8 @@ class AppThemes {
         ),
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: p.brightness == Brightness.dark
-            ? p.surfaceAlt
-            : p.onSurface,
+        backgroundColor:
+            p.brightness == Brightness.dark ? p.surfaceAlt : p.onSurface,
         contentTextStyle: TextStyle(
           color: p.brightness == Brightness.dark ? p.onSurface : p.surface,
         ),
@@ -371,6 +388,179 @@ class AppThemes {
         ),
       ),
     );
+  }
+
+  // ═══════════════ باني الثيم المخصص ═══════════════
+
+  static ThemeData _buildCustom(CustomTheme c) {
+    final brightness = c.isLight ? Brightness.light : Brightness.dark;
+
+    final scheme = ColorScheme(
+      brightness: brightness,
+      primary: c.primary,
+      onPrimary: _contrastOn(c.primary),
+      secondary: c.secondary,
+      onSecondary: _contrastOn(c.secondary),
+      error: c.error,
+      onError: _contrastOn(c.error),
+      surface: c.surface,
+      onSurface: c.onSurface,
+      surfaceContainerHighest: c.surfaceAlt,
+    );
+
+    final baseText = brightness == Brightness.dark
+        ? Typography.material2021().white
+        : Typography.material2021().black;
+
+    final textTheme = baseText.apply(
+      bodyColor: c.onSurface,
+      displayColor: c.onSurface,
+    );
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: brightness,
+      colorScheme: scheme,
+      scaffoldBackgroundColor: c.background,
+      canvasColor: c.background,
+      textTheme: textTheme,
+      primaryTextTheme: textTheme,
+      iconTheme: IconThemeData(color: c.onSurface),
+      appBarTheme: AppBarTheme(
+        backgroundColor: c.appBarBg,
+        foregroundColor: c.appBarFg,
+        elevation: 0,
+        centerTitle: false,
+        titleTextStyle: textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: c.appBarFg,
+        ),
+        iconTheme: IconThemeData(color: c.appBarFg),
+      ),
+      cardTheme: CardThemeData(
+        color: c.surface,
+        elevation: c.isLight ? 1 : 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
+      dividerTheme: DividerThemeData(
+        color: c.onSurface.withValues(alpha: 0.08),
+        thickness: 1,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: c.primary,
+          foregroundColor: _contrastOn(c.primary),
+          minimumSize: const Size.fromHeight(52),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: c.primary,
+          minimumSize: const Size.fromHeight(52),
+          side: BorderSide(color: c.primary.withValues(alpha: 0.5)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(foregroundColor: c.primary),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: c.surfaceAlt,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: c.primary, width: 1.6),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: c.error, width: 1.6),
+        ),
+        labelStyle: TextStyle(color: c.onSurface.withValues(alpha: 0.7)),
+        hintStyle: TextStyle(color: c.onSurface.withValues(alpha: 0.5)),
+      ),
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        backgroundColor: c.bottomNavBg,
+        selectedItemColor: c.primary,
+        unselectedItemColor: c.onSurface.withValues(alpha: 0.55),
+        type: BottomNavigationBarType.fixed,
+        elevation: 0,
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: c.bottomNavBg,
+        indicatorColor: c.primary.withValues(alpha: 0.18),
+      ),
+      drawerTheme: DrawerThemeData(backgroundColor: c.surface),
+      dialogTheme: DialogThemeData(
+        backgroundColor: c.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: c.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: c.isLight ? c.onSurface : c.surfaceAlt,
+        contentTextStyle: TextStyle(
+          color: c.isLight ? c.surface : c.onSurface,
+        ),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: c.surfaceAlt,
+        selectedColor: c.primary.withValues(alpha: 0.25),
+        labelStyle: TextStyle(color: c.onSurface),
+        side: BorderSide.none,
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: c.primary,
+        linearTrackColor: c.surfaceAlt,
+      ),
+      listTileTheme: ListTileThemeData(
+        iconColor: c.onSurface.withValues(alpha: 0.8),
+        textColor: c.onSurface,
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? c.primary : null,
+        ),
+        trackColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected)
+              ? c.primary.withValues(alpha: 0.5)
+              : null,
+        ),
+      ),
+    );
+  }
+
+  /// يرجع لونًا متباينًا (أسود أو أبيض) حسب اللون المُدخل
+  static Color _contrastOn(Color c) {
+    final luminance = c.computeLuminance();
+    return luminance > 0.5 ? Colors.black : Colors.white;
   }
 }
 

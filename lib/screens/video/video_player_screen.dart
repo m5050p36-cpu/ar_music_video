@@ -70,9 +70,52 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
+
+    // ═══ سجّل callbacks أزرار PiP ═══
+    PipService.onPlayPause = _onPiPPlayPause;
+    PipService.onNext = _onPiPNext;
+    PipService.onPrevious = _onPiPPrev;
+
     _initController();
     _initBrightness();
     _startPositionAutoSave();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // معالجات أزرار PiP
+  // ═══════════════════════════════════════════════════════════════
+  Future<void> _onPiPPlayPause() async {
+    if (_disposed) return;
+    if (_controller.value.isPlaying) {
+      await _controller.pause();
+    } else {
+      await _controller.play();
+    }
+    if (mounted) setState(() {});
+    await _syncPiPControls();
+  }
+
+  Future<void> _onPiPNext() async {
+    if (_disposed) return;
+    await _playNext();
+    await _syncPiPControls();
+  }
+
+  Future<void> _onPiPPrev() async {
+    if (_disposed) return;
+    await _playPrevious();
+    await _syncPiPControls();
+  }
+
+  /// أرسل الحالة الحالية لـ PiP — لتحديث الأزرار
+  Future<void> _syncPiPControls() async {
+    try {
+      await PipService.updateControls(
+        isPlaying: _controller.value.isPlaying,
+        hasNext: _hasPlaylist,
+        hasPrev: _hasPlaylist,
+      );
+    } catch (_) {}
   }
 
   @override
@@ -82,6 +125,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _positionSaveTimer?.cancel();
     _sleepTimer?.cancel();
     _savePositionNow();
+    PipService.clearCallbacks();
     _controller.removeListener(_videoListener);
     _controller.dispose();
     WakelockPlus.disable();
@@ -102,6 +146,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     WakelockPlus.enable();
     if (mounted) setState(() {});
     _startControlsTimer();
+    await _syncPiPControls();
   }
 
   Future<void> _initBrightness() async {
@@ -247,6 +292,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await _controller.play();
       WakelockPlus.enable();
       if (mounted) setState(() {});
+      await _syncPiPControls();
     } catch (e) {
       debugPrint('loadVideoAt error: $e');
     }
@@ -644,7 +690,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert, color: Colors.white),
-                onSelected: (val) {
+                onSelected: (val) async {
                   switch (val) {
                     case 'aspect':
                       _cycleAspect();
@@ -659,6 +705,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       _showSleepTimerDialog();
                       break;
                     case 'pip':
+                      await _syncPiPControls();
                       final ar = _controller.value.aspectRatio;
                       PipService.enterPiP(
                         width: (ar * 100).toInt(),
@@ -791,18 +838,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   color: Colors.white,
                   size: 72,
                 ),
-                onPressed: () {
-                  setState(() {
-                    if (_controller.value.isPlaying) {
-                      _controller.pause();
-                      WakelockPlus.disable();
-                      _controlsTimer?.cancel();
-                    } else {
-                      _controller.play();
-                      WakelockPlus.enable();
-                      _startControlsTimer();
-                    }
-                  });
+                onPressed: () async {
+                  if (_controller.value.isPlaying) {
+                    await _controller.pause();
+                    WakelockPlus.disable();
+                    _controlsTimer?.cancel();
+                  } else {
+                    await _controller.play();
+                    WakelockPlus.enable();
+                    _startControlsTimer();
+                  }
+                  if (mounted) setState(() {});
+                  await _syncPiPControls();
                 },
               ),
               const SizedBox(width: 16),

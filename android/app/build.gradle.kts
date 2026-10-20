@@ -32,7 +32,7 @@ android {
     defaultConfig {
         applicationId = "com.m5050p36.armusic"
         minSdk = 23
-        targetSdk = 34
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
